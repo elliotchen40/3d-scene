@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>自然环境素材 · Three.js</title>
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml" />
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e; --accent:#58a6ff; --warn:#d29922; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height:100vh; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    padding:40px 20px 60px;
+  }
+  .wrap { width:100%; max-width:1180px; margin:0 auto; }
+  h1 { font-size:26px; font-weight:600; letter-spacing:.02em; }
+  .sub { color:var(--dim); font-size:13px; margin-top:6px; margin-bottom:8px; }
+  .back { display:inline-block; margin-bottom:24px; color:var(--accent); text-decoration:none; font-size:13px; }
+  .back:hover { text-decoration:underline; }
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+  a.card {
+    display:block; text-decoration:none; color:inherit;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:18px 20px; transition:border-color .15s, transform .15s;
+  }
+  a.card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .name { font-size:16px; font-weight:600; }
+  .tag { color:var(--accent); font-size:12px; margin-top:3px; }
+  .desc { color:var(--dim); font-size:13px; margin-top:10px; line-height:1.6; }
+  .tip { color:var(--warn); font-size:12px; margin-top:8px; line-height:1.55; }
+  .foot { color:var(--dim); font-size:12px; margin-top:30px; padding-top:20px; border-top:1px solid var(--line); line-height:1.8; }
+  code { background:#21262d; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回 3D 场景合集</a>
+
+  <h1>自然环境素材 · Three.js</h1>
+  <div class="sub">9 个开源项目 · 全部 MIT 许可 · 纯静态部署，无外部 CDN 依赖</div>
+
+  <div class="grid">
+    <a class="card" href="elemental-serenity/index.html">
+      <div class="name">Elemental Serenity</div>
+      <div class="tag">★ 画面最好 · 四季 + 昼夜</div>
+      <div class="desc">自然微缩景观：四季切换（春 / 秋 / 冬 / 雨）与实时昼夜，篝火、帐篷、拱桥、池塘。Managers 架构（SeasonManager 808 行 / GrassManager 577 行）。</div>
+      <div class="tip">入口是 splash 页，点 “Explore in Silence” 才进场景。</div>
+    </a>
+
+    <a class="card" href="small-world/index.html">
+      <div class="name">small-world</div>
+      <div class="tag">12 个生物群系</div>
+      <div class="desc">程序化漂浮岛生态箱：地形、植物、生物、鸟、天气、昼夜全程序化，16 位种子生成，可换群系。</div>
+      <div class="tip">首次会弹帮助面板，按 Esc 关掉（否则挡住整个场景）。</div>
+    </a>
+
+    <a class="card" href="water/index.html">
+      <div class="name">WaterThreeJS</div>
+      <div class="tag">最适合移植</div>
+      <div class="desc">Gerstner 海面 + SSR 反射 + 浪沫 + 体积云 + 水下效果，2869 行。体量最小、无 GLSL3。</div>
+      <div class="tip">右上 GUI 面板可调浪高 / 泡沫 / 云量，可潜到水下。</div>
+    </a>
+
+    <a class="card" href="ocean/index.html">
+      <div class="name">OceanThreejs</div>
+      <div class="tag">FFT 物理海</div>
+      <div class="desc">基于 FFT 物理模拟的写实海洋：JONSWAP 谱、级联 FFT + 6 路 Gerstner，风速 / 浪高 / 泡沫全可调。</div>
+      <div class="tip">GLSL3 + HalfFloat RT，移植到 three r147 需要改写。</div>
+    </a>
+
+    <a class="card" href="grass/index.html">
+      <div class="name">GrassSystemThreeJS</div>
+      <div class="tag">土壤 + 苔藓 + 草</div>
+      <div class="desc">实时程序化土壤沙盒：拖拽雕刻地面、真实土壤、Worley 干裂、苔藓覆盖、GPU instanced 随风草叶。</div>
+      <div class="tip">草和苔藓默认关着 —— 右上 GUI 展开 Grass / Moss Cover 打开。</div>
+    </a>
+
+    <a class="card" href="snow/index.html">
+      <div class="name">SnowSystemThreeJS</div>
+      <div class="tag">雪 + 堆积</div>
+      <div class="desc">飘雪 + 积雪着色器：world-space FBM mask 决定堆积位置，抬升 albedo、粗糙度变哑光、冰晶闪烁。</div>
+      <div class="tip">右上 GUI 有 Snow on Ground / Snowfall / Wind 可调。</div>
+    </a>
+
+    <a class="card" href="rain/index.html">
+      <div class="name">RainSystemThreeJS</div>
+      <div class="tag">雨 + 涟漪 + 闪电</div>
+      <div class="desc">雨丝、地面涟漪、水洼、闪电，氛围感很强。</div>
+      <div class="tip">面板里 Strike Now 可立刻触发一次闪电。</div>
+    </a>
+
+    <a class="card" href="vegetation/index.html">
+      <div class="name">VegetationGeneratorThreeJS</div>
+      <div class="tag">表面生成藤蔓</div>
+      <div class="desc">在任意模型表面绘制并生成生长的藤蔓与花，BVH surface painter，可载入自己的 glb。</div>
+      <div class="tip">默认是球体预设 —— 在模型上按住拖拽才会画出藤蔓。</div>
+    </a>
+
+    <a class="card" href="jungle-trail/index.html">
+      <div class="name">jungle-trail</div>
+      <div class="tag">零外部素材</div>
+      <div class="desc">第一人称丛林小径，地形 / 植被 / 水 / 雾全程序化，零外部美术资源，含环境音与步态。</div>
+      <div class="tip">CPU raymarch 体积雾，软渲染设备上会全黑 —— 需要真机 WebGL。</div>
+    </a>
+  </div>
+
+  <div class="foot">
+    全部项目来自 GitHub 开源仓库，MIT 许可，各项目目录内保留原始 <code>LICENSE</code>。<br />
+    源码在各场景的 <code>source/</code> 目录，重新构建：<code>cd scenes/nature &amp;&amp; node build-nature.mjs</code><br />
+    给 ourworld 的提示：vendor 只有 three r147/r168，r147 无 <code>outputColorSpace</code>、
+    输出编码 chunk 名是 <code>encodings_fragment</code>（r185 是 <code>colorspace_fragment</code>）——
+    直接抄 r185 的 shader 会挂。建议抄 shader 和算法，不换贴图（ourworld 是手绘低多边形风）。
+  </div>
+</div>
+</body>
+</html>

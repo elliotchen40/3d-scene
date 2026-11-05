@@ -1,0 +1,983 @@
+import * as THREE from "three";
+import { state } from "./state.js";
+import { LOWFX } from "./lowfx.js";
+import { CLOUD_COUNT, AURORA_BIOMES, AURORA_TINTS } from "./biomes.js";
+import {
+  GLSL_HASH2,
+  GLSL_HASH2_HI_PRECISION,
+  GLSL_VALUE_NOISE,
+  GLSL_VALUE_NOISE_MULTILINE,
+} from "./shaders/noise.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sky dome — vertical gradient shader sphere. Replaces scene.background so the
+// horizon line isn't a flat color seam. Uniforms (uZenith / uHorizon) are
+// mutated each frame by updateDayNight so the dome inherits the same dawn /
+// day / dusk / night palette transitions as the rest of the world.
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the vertical-gradient sky dome sphere that replaces `scene.background`
+ * so the horizon reads as a soft gradient rather than a flat color seam.
+ * `uZenith`/`uHorizon` are mutated each frame by {@link updateSkyColors}.
+ * @param {object} biome - biome config; seeds the initial zenith (from `sky`) and horizon (from `fog`) colors.
+ * @returns {THREE.Mesh}
+ */
+export function makeSkyDome(biome) {
+  // Big enough to sit behind the parallax mountains (radius 200) and well
+  // outside the camera maxDistance (72).
+  const geo = new THREE.SphereGeometry(380, 32, 20);
+  const zenith = new THREE.Color(biome.sky).offsetHSL(0, 0.04, -0.06);
+  const horizon = new THREE.Color(biome.fog).offsetHSL(0, 0.02, 0.04);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+    uniforms: {
+      uZenith: { value: zenith },
+      uHorizon: { value: horizon },
+      // shapes the gradient — higher = horizon stays low, lower = horizon
+      // color bleeds up the sky. 1.6 reads as a soft painterly transition.
+      uExp: { value: 1.6 },
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uZenith;
+      uniform vec3 uHorizon;
+      uniform float uExp;
+      varying vec3 vDir;
+      void main() {
+        float t = clamp(vDir.y + 0.05, 0.0, 1.0);
+        t = pow(t, uExp);
+        gl_FragColor = vec4(mix(uHorizon, uZenith, t), 1.0);
+      }
+    `,
+  });
+  const dome = new THREE.Mesh(geo, mat);
+  // draw first, behind everything; never frustum-cull a 760-diameter sphere
+  dome.renderOrder = -100;
+  dome.frustumCulled = false;
+  return dome;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mountain backdrop — two concentric wobbled cylinders behind the island, so
+// the horizon reads as a layered silhouette rather than a flat fog band.
+// Both rings inherit the biome palette and are nudged toward fog at night
+// (via updateDayNight) so they recede into the sky after dusk.
+// ─────────────────────────────────────────────────────────────────────────────
+function makeWobbledRing(radius, height, peakAmp, peakDetail, segs) {
+  const geo = new THREE.CylinderGeometry(radius, radius, height, segs, 4, true);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y > 0) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      const a = Math.atan2(z, x);
+      // Three octaves of angular sin so peaks have rolling sub-bumps instead
+      // of a regular sine pattern. peakDetail picks the dominant frequencies.
+      const wobble =
+        Math.sin(a * peakDetail.f1) * peakAmp +
+        Math.sin(a * peakDetail.f2 + peakDetail.p2) * peakAmp * 0.6 +
+        Math.sin(a * peakDetail.f3 - peakDetail.p3) * peakAmp * 1.2;
+      const lift = (y / (height * 0.5)) * wobble;
+      pos.setY(i, y + lift);
+    }
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Build the two-layer wobbled-cylinder mountain backdrop (far ring: lighter,
+ * taller, hazier; near ring: darker, more defined) that reads as a distant
+ * silhouette ringing the island. Re-tinted per frame by {@link updateSkyColors}
+ * via the `farMat`/`nearMat`/`farBase`/`nearBase` refs stashed on `group.userData`.
+ * @param {object} biome - biome config; both rings derive their tint from `sky`/`fog`.
+ * @returns {THREE.Group}
+ */
+export function makeMountainBackdrop(biome) {
+  const group = new THREE.Group();
+  const skyC = new THREE.Color(biome.sky);
+  const fogC = new THREE.Color(biome.fog);
+
+  // Far ring — sits between the sky dome and the island. Lighter, taller,
+  // hazier — reads as distant peaks fading into the sky.
+  const farGeo = makeWobbledRing(
+    220, 36, 7,
+    { f1: 5, f2: 11, p2: 1.7, f3: 3, p3: 0.4 },
+    96
+  );
+  const farTint = fogC.clone().lerp(skyC, 0.75);
+  const farMat = new THREE.MeshBasicMaterial({
+    color: farTint,
+    side: THREE.BackSide,
+    fog: false, // we want them to read past the world's fog band
+    transparent: true,
+    opacity: 0.75,
+    depthWrite: false,
+  });
+  const far = new THREE.Mesh(farGeo, farMat);
+  far.position.y = 6;
+  far.renderOrder = -50;
+  far.frustumCulled = false;
+  group.add(far);
+
+  // Near ring — closer to the island, darker, more defined silhouettes.
+  // This is the silhouette band that sells "the world sits in a valley".
+  const nearGeo = makeWobbledRing(
+    115, 24, 4,
+    { f1: 7, f2: 13, p2: 1.2, f3: 4, p3: 1.9 },
+    96
+  );
+  const nearTint = fogC.clone().lerp(skyC, 0.4);
+  const nearMat = new THREE.MeshBasicMaterial({
+    color: nearTint,
+    side: THREE.BackSide,
+    fog: true, // fog hides the base, leaving only the peaks
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+  });
+  const near = new THREE.Mesh(nearGeo, nearMat);
+  near.position.y = 2;
+  near.renderOrder = -40;
+  near.frustumCulled = false;
+  group.add(near);
+
+  // expose mats so day/night can re-tint each layer at dusk/night
+  group.userData.farMat = farMat;
+  group.userData.nearMat = nearMat;
+  group.userData.farBase = farTint.clone();
+  group.userData.nearBase = nearTint.clone();
+  return group;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloud layer — soft circular sprites floating beyond the mountain silhouettes.
+// Per-biome density (cloudCount) and tint live on the biome config; biomes with
+// cloudCount 0 / undefined get no clouds (desert, ashen). Sprites are placed in
+// loose clusters across the upper hemisphere so the sky reads as puffy clumps
+// instead of evenly-spaced dots. Clouds drift slowly via stepClouds.
+// ─────────────────────────────────────────────────────────────────────────────
+let _cloudTex = null;
+function getCloudTexture() {
+  if (_cloudTex) return _cloudTex;
+  // Generate a soft puff texture procedurally so we don't ship a PNG.
+  // Note: this texture is shared across regens to avoid re-painting the
+  // canvas every time, but disposeGroup (state.js) walks every material on
+  // the torn-down world — including the cloud sprites' materials — and
+  // disposes any texture it finds on them, which would silently invalidate
+  // this cached instance without clearing the module-scope reference below.
+  // Rather than special-casing sky textures in the generic disposer, listen
+  // for the texture's own 'dispose' event and null out our cache when it
+  // fires, so the next regen intentionally repaints a fresh texture instead
+  // of handing out a disposed one.
+  const size = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  // Layered radial gradients to fake clumpy cloud silhouette
+  const blobs = [
+    { x: 0.5, y: 0.55, r: 0.42, a: 0.95 },
+    { x: 0.32, y: 0.6, r: 0.28, a: 0.85 },
+    { x: 0.68, y: 0.62, r: 0.30, a: 0.85 },
+    { x: 0.4, y: 0.45, r: 0.22, a: 0.7 },
+    { x: 0.62, y: 0.46, r: 0.20, a: 0.7 },
+  ];
+  for (const b of blobs) {
+    const g = ctx.createRadialGradient(
+      b.x * size, b.y * size, 0,
+      b.x * size, b.y * size, b.r * size
+    );
+    g.addColorStop(0, `rgba(255,255,255,${b.a})`);
+    g.addColorStop(0.6, `rgba(255,255,255,${b.a * 0.4})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  }
+  _cloudTex = new THREE.CanvasTexture(c);
+  _cloudTex.colorSpace = THREE.SRGBColorSpace;
+  const tex = _cloudTex;
+  tex.addEventListener("dispose", () => {
+    if (_cloudTex === tex) _cloudTex = null;
+  });
+  return _cloudTex;
+}
+
+/**
+ * Build the drifting cloud-sprite layer for one biome — soft circular puff
+ * sprites grouped into loose clusters across the upper hemisphere so the sky
+ * reads as cottony clumps rather than evenly-spaced dots. Density comes from
+ * `CLOUD_COUNT[biome.id]` (halved under LOWFX); returns `null` for biomes
+ * with a count of 0. Step per frame with {@link stepClouds}.
+ * @param {object} biome - biome config (`id`, optional `cloudTint`/`cloudOpacity`).
+ * @returns {THREE.Group|null}
+ */
+export function makeCloudLayer(biome) {
+  const base = CLOUD_COUNT[biome.id] ?? 12;
+  const count = LOWFX ? Math.max(2, Math.floor(base * 0.5)) : base;
+  if (count <= 0) return null;
+
+  const group = new THREE.Group();
+  const tint = new THREE.Color(biome.cloudTint ?? biome.sky)
+    .lerp(new THREE.Color(0xffffff), 0.35);
+  const tex = getCloudTexture();
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    color: tint,
+    transparent: true,
+    // Default opacity stays low so distant clouds don't dominate the sky —
+    // they're meant to accent the dome gradient, not replace it. Per-biome
+    // override via cloudOpacity for skies that want a visibly cloudy look.
+    opacity: biome.cloudOpacity ?? 0.32,
+    depthWrite: false,
+    fog: false,
+  });
+
+  // Distribute cluster centers across the upper hemisphere — sphere radius
+  // 180-240, polar angle theta from 25° (overhead) to 82° (near horizon).
+  // The hemisphere cap keeps clouds visible from every orbit angle; clustering
+  // several sprites around each center makes them read as cottony puffs rather
+  // than a regular dotted field.
+  const sprites = [];
+  const thetaMin = 0.44; // ~25° from zenith
+  const thetaMax = 1.43; // ~82° from zenith
+  const clusterCount = Math.max(1, Math.ceil(count / 4));
+  let remaining = count;
+  for (let ci = 0; ci < clusterCount; ci++) {
+    const remainingClusters = clusterCount - ci;
+    const evenShare = Math.ceil(remaining / remainingClusters);
+    const maxThisCluster = remaining - (remainingClusters - 1);
+    const clusterSize = remainingClusters === 1
+      ? remaining
+      : Math.max(
+        1,
+        Math.min(maxThisCluster, evenShare + Math.floor(Math.random() * 3) - 1)
+      );
+    remaining -= clusterSize;
+
+    const phiStep = Math.PI * 2 / clusterCount;
+    const clusterPhi = ci * phiStep + (Math.random() - 0.5) * phiStep * 0.55;
+    const clusterTheta = thetaMin + Math.random() * (thetaMax - thetaMin);
+    const clusterSphereR = 180 + Math.random() * 60;
+    const clusterSpread = 0.024 + Math.random() * 0.026;
+    const driftSpeed = 0.012 + Math.random() * 0.018;
+
+    for (let i = 0; i < clusterSize; i++) {
+      const around = (i / clusterSize) * Math.PI * 2 + Math.random() * 0.9;
+      const offset = Math.sqrt(Math.random()) * clusterSpread;
+      const phi = clusterPhi + Math.cos(around) * offset / Math.max(0.45, Math.sin(clusterTheta));
+      const theta = Math.max(
+        thetaMin,
+        Math.min(
+          thetaMax,
+          clusterTheta + Math.sin(around) * offset * 0.8 + (Math.random() - 0.5) * 0.025
+        )
+      );
+      const sphereR = clusterSphereR + (Math.random() - 0.5) * 10;
+      const xzR = sphereR * Math.sin(theta);
+      const y = sphereR * Math.cos(theta);
+      const s = new THREE.Sprite(mat.clone());
+      s.position.set(Math.cos(phi) * xzR, y, Math.sin(phi) * xzR);
+      // Broad puffs overlap inside each cluster so separate sprites merge into
+      // one cottony mass instead of reading as individual dots. In-cluster
+      // variation keeps the silhouette soft and hand-placed.
+      const scale = 14 + Math.random() * 10;
+      s.scale.set(
+        scale * (2.0 + Math.random() * 0.65),
+        scale * (0.72 + Math.random() * 0.26),
+        1
+      );
+      s.material.opacity *= 0.72 + Math.random() * 0.3;
+      s.material.rotation = (Math.random() - 0.5) * 0.45;
+      s.userData.driftSpeed = driftSpeed;
+      s.userData.angle = phi;
+      s.userData.radius = xzR;
+      s.userData.height = y;
+      s.renderOrder = -30;
+      group.add(s);
+      sprites.push(s);
+    }
+  }
+  group.userData.sprites = sprites;
+  group.userData.baseTint = tint.clone();
+  return group;
+}
+
+/**
+ * Advance each cloud sprite's drift angle and reposition it on its orbit.
+ * @param {THREE.Group|null} group - value returned by {@link makeCloudLayer}; no-op if null.
+ * @param {number} dt - frame delta time, in seconds.
+ */
+export function stepClouds(group, dt) {
+  if (!group) return;
+  for (const s of group.userData.sprites) {
+    s.userData.angle += s.userData.driftSpeed * dt;
+    s.position.x = Math.cos(s.userData.angle) * s.userData.radius;
+    s.position.z = Math.sin(s.userData.angle) * s.userData.radius;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Starfield — points cloud on the upper sky hemisphere. Hidden during the day
+// and fades in at night via updateDayNight. Single mesh, shared across all
+// biomes; the per-biome aurora layer (below) adds biome-specific night color.
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the shared starfield point cloud on the upper sky hemisphere. Hidden
+ * during the day and faded in at night via `uAlpha`, mutated by
+ * {@link updateSkyColors}'s caller (`updateDayNight` in world.js). One
+ * instance is shared across all biomes; per-biome night color comes from
+ * the aurora layer (see {@link makeAurora}).
+ * @returns {THREE.Points}
+ */
+export function makeStarfield() {
+  const count = LOWFX ? 220 : 600;
+  const positions = new Float32Array(count * 3);
+  const brights = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    // Random direction biased to upper hemisphere so we don't waste stars
+    // underground (the dome's lower half is below the horizon anyway).
+    const u = Math.random();
+    const v = 0.15 + Math.random() * 0.85; // 0=bottom, 1=top — bias up
+    const theta = u * Math.PI * 2;
+    const phi = Math.acos(2 * v - 1);
+    const r = 350;
+    positions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
+    positions[i * 3 + 1] = Math.cos(phi) * r;
+    positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
+    brights[i] = 0.4 + Math.random() * 0.6;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute("aBright", new THREE.BufferAttribute(brights, 1));
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+    uniforms: {
+      uAlpha: { value: 0 },
+      uTime: { value: 0 },
+    },
+    vertexShader: `
+      attribute float aBright;
+      varying float vBright;
+      void main() {
+        vBright = aBright;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = 1.0 + aBright * 1.6;
+      }
+    `,
+    fragmentShader: `
+      uniform float uAlpha;
+      uniform float uTime;
+      varying float vBright;
+      void main() {
+        // soft circular point
+        vec2 c = gl_PointCoord - 0.5;
+        float d = length(c);
+        float a = smoothstep(0.5, 0.0, d);
+        // subtle twinkle — phase from brightness so neighbors don't sync
+        float twinkle = 0.7 + 0.3 * sin(uTime * 2.3 + vBright * 18.0);
+        gl_FragColor = vec4(vec3(1.0, 0.96, 0.9) * vBright * twinkle, a * uAlpha);
+      }
+    `,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.renderOrder = -90;
+  points.frustumCulled = false;
+  return points;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aurora — wide curtain mesh for biomes that look good with cold/night skies.
+// Biome opt-in via `aurora: true`; otherwise this returns null. Fades in
+// alongside the starfield at night.
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the aurora curtain layer for biomes opted in via `AURORA_BIOMES`
+ * (see biomes.js) — a few overlapping shader-driven curtain meshes at
+ * different angles around the horizon, tinted from `AURORA_TINTS[biome.id]`.
+ * Fades in alongside the starfield at night via each curtain's `uAlpha`.
+ * @param {object} biome - biome config (`id`, `sky`, `accent`).
+ * @returns {THREE.Group|null} null for biomes not in `AURORA_BIOMES`.
+ */
+export function makeAurora(biome) {
+  if (!AURORA_BIOMES.has(biome.id)) return null;
+
+  // A few overlapping curtains at different angles around the horizon.
+  const group = new THREE.Group();
+  const tints = AURORA_TINTS[biome.id] ?? ["#7df0c8", "#a98cff", biome.accent];
+  const tintA = new THREE.Color(tints[0]);
+  const tintB = new THREE.Color(tints[1]);
+  const tintC = new THREE.Color(tints[2]).lerp(new THREE.Color(biome.sky), 0.12);
+
+  for (let i = 0; i < 3; i++) {
+    const w = 220;
+    const h = 70;
+    const geo = new THREE.PlaneGeometry(w, h, 32, 1);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      fog: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uAlpha: { value: 0 },
+        uTime: { value: 0 },
+        uA: { value: tintA },
+        uB: { value: tintB },
+        uC: { value: tintC },
+        uSeed: { value: i * 1.7 },
+      },
+      vertexShader: `
+        uniform float uTime;
+        uniform float uSeed;
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          vec3 p = position;
+          // gentle horizontal ripple to suggest curtain motion
+          p.x += sin(p.x * 0.04 + uTime * 0.3 + uSeed) * 4.0;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uAlpha;
+        uniform float uTime;
+        uniform float uSeed;
+        uniform vec3 uA;
+        uniform vec3 uB;
+        uniform vec3 uC;
+        varying vec2 vUv;
+
+        // hash-based value noise (see src/shaders/noise.js)
+        ${GLSL_HASH2_HI_PRECISION}
+
+        ${GLSL_VALUE_NOISE_MULTILINE}
+
+        void main() {
+          // Feather all plane edges so the curtain dissolves into the sky.
+          float edgeFade = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+          float vfade = smoothstep(0.02, 0.34, vUv.y) * smoothstep(1.0, 0.68, vUv.y);
+
+          float n = valueNoise(vec2(vUv.x * 7.0 + uTime * 0.05, vUv.y * 4.0 + uSeed));
+          float fine = valueNoise(vec2(vUv.x * 18.0 - uTime * 0.09, vUv.y * 9.0 + uSeed * 2.0));
+
+          // Layered, drifting rays read as shimmer instead of flat columns.
+          float rayA = 0.5 + 0.5 * sin(vUv.x * 22.0 + uTime * 0.65 + uSeed * 3.1 + n * 2.4);
+          float rayB = 0.5 + 0.5 * sin(vUv.x * 37.0 - uTime * 0.42 + uSeed * 1.9 + fine * 1.8);
+          float band = smoothstep(0.18, 0.86, rayA) * 0.72 + smoothstep(0.55, 0.98, rayB) * 0.38;
+          float shimmer = 0.74 + 0.26 * sin(uTime * 2.4 + uSeed + n * 6.2831);
+          float breakup = smoothstep(0.10, 0.78, n * 0.7 + fine * 0.3);
+
+          float colorFlow = fract(vUv.x * 0.85 + 0.12 * sin(uTime * 0.35 + uSeed) + n * 0.18);
+          vec3 col = mix(uA, uB, smoothstep(0.05, 0.95, colorFlow));
+          col = mix(col, uC, smoothstep(0.35, 1.0, rayB) * 0.45);
+          col *= 1.05 + 0.22 * shimmer;
+
+          float a = edgeFade * vfade * band * breakup * shimmer * 0.48 * uAlpha;
+          gl_FragColor = vec4(col, a);
+        }
+      `,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    // Sit between mountain rings and the sky dome, at a height that's clearly
+    // in-frame for the default orbit camera (y≈25 looking at the island).
+    m.position.set(0, 40, -150);
+    m.rotation.y = Math.random() * 0.3;
+    // rotate around scene origin by rotating the parent group? simpler: keep
+    // each curtain at its own angle by parenting to a per-mesh pivot.
+    m.frustumCulled = false;
+    m.renderOrder = -70;
+    const pivot = new THREE.Group();
+    pivot.rotation.y = (i / 3) * Math.PI * 2;
+    pivot.add(m);
+    group.add(pivot);
+  }
+  group.userData.curtains = group.children.map(p => p.children[0]);
+  return group;
+}
+
+// Stepping for sky-dome / mountain re-tinting (called by updateDayNight in
+// world.js — kept here so all sky knobs live alongside their constructors).
+/**
+ * Build the cloudlike-biome swirling cloud halo: a wide flat torus around the
+ * island with a custom shader running two-octave value noise scrolled in
+ * opposing directions (reads as swirling), soft alpha falloff at the torus
+ * poles, and colors blended from `biome.fog` → `biome.accent`. Shares
+ * `state.windUniforms.uTime` so no dedicated per-frame step call is needed.
+ * @param {object} biome - biome config; must have `cloudlike` truthy and not `cloudSwirl === false`.
+ * @returns {THREE.Mesh|null} null for any biome that isn't flagged `cloudlike` (or opts out via `cloudSwirl: false`).
+ */
+export function makeCloudSwirl(biome) {
+  if (!biome.cloudlike || biome.cloudSwirl === false) return null;
+
+  const radius = 30.0;      // major radius — wraps around the island
+  const tube = 7.0;         // minor radius — thickness of the cloud band
+  const geo = new THREE.TorusGeometry(radius, tube, 14, 96);
+
+  const colA = new THREE.Color(biome.fog);
+  const colB = new THREE.Color(biome.accent);
+
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime: state.windUniforms.uTime,   // shared time — no per-frame step needed
+      uColA: { value: colA },
+      uColB: { value: colB },
+      uAlpha: { value: 0.55 },           // overall opacity
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform float uTime;
+      uniform vec3  uColA;
+      uniform vec3  uColB;
+      uniform float uAlpha;
+      varying vec2  vUv;
+
+      ${GLSL_HASH2}
+      ${GLSL_VALUE_NOISE}
+      // Two octaves at different scales, scrolled in opposite directions
+      // along U; together they read as slow-swirling cumulus.
+      float swirl(vec2 uv, float t) {
+        float a = vnoise(vec2(uv.x * 8.0 - t * 0.08, uv.y * 4.0));
+        float b = vnoise(vec2(uv.x * 16.0 + t * 0.14, uv.y * 8.0 + t * 0.05));
+        return 0.65 * a + 0.45 * b;
+      }
+
+      void main() {
+        // Distort the lookup itself with a low-frequency noise to break
+        // up directional banding — gives the "curling" feel.
+        vec2 warp = vec2(
+          vnoise(vUv * 2.7 + vec2(uTime * 0.04, 0.0)),
+          vnoise(vUv * 2.1 + vec2(0.0, uTime * 0.03))
+        );
+        float n = swirl(vUv + (warp - 0.5) * 0.25, uTime);
+
+        // Softer-edge fog (low end of noise) → bright tufts (high end).
+        float density = smoothstep(0.30, 0.95, n);
+
+        // Fade the band near the torus poles (v → 0 or 1) so it doesn't
+        // read as a hard ring — soft top/bottom edges.
+        float pole = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
+
+        vec3 col = mix(uColA, uColB, density * 0.55);
+        float a = density * pole * uAlpha;
+        gl_FragColor = vec4(col, a);
+      }
+    `,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  // Lay the torus flat (around Y axis) so the band wraps horizontally
+  // around the island.
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.y = 6.0;     // sits just above the island silhouette
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -65;    // behind the clouds layer, in front of mountains
+  return mesh;
+}
+
+function edgeRadiusAtAngle(center, angle) {
+  const radius = center.visualRadius ?? center.radius;
+  const shape = center.shape ?? { kind: "round" };
+  if (shape.kind === "oblong") {
+    const dx = Math.cos(angle), dz = Math.sin(angle);
+    const co = Math.cos(shape.orient), si = Math.sin(shape.orient);
+    const lx = co * dx + si * dz;
+    const lz = -si * dx + co * dz;
+    const stretch = shape.stretch ?? 1;
+    return radius / Math.max(1e-6, Math.sqrt((lx / stretch) ** 2 + lz * lz));
+  }
+  return radius;
+}
+
+function makeEdgeAuraGeometry(center, inwardOverlap, outerSoft, radialSegments, angleSegments) {
+  const radialSpan = inwardOverlap + outerSoft;
+  const positions = [];
+  const edgeRadials = [];
+  const indices = [];
+
+  for (let i = 0; i <= angleSegments; i++) {
+    const angle = (i / angleSegments) * Math.PI * 2;
+    const edgeR = edgeRadiusAtAngle(center, angle);
+    const ca = Math.cos(angle), sa = Math.sin(angle);
+    for (let j = 0; j <= radialSegments; j++) {
+      const radial = -inwardOverlap + (j / radialSegments) * radialSpan;
+      const r = Math.max(0.1, edgeR + radial);
+      positions.push(ca * r, sa * r, 0);
+      edgeRadials.push(radial);
+    }
+  }
+
+  const stride = radialSegments + 1;
+  for (let i = 0; i < angleSegments; i++) {
+    for (let j = 0; j < radialSegments; j++) {
+      const a = i * stride + j;
+      const b = (i + 1) * stride + j;
+      const c = b + 1;
+      const d = a + 1;
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("aEdgeRadial", new THREE.Float32BufferAttribute(edgeRadials, 1));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Base blade-line count for grass-pattern edge auras at lineDensity 1 (the
+// default, and the only value any biome currently uses — see biomes.js: no
+// biome sets an `edgeAura.lineDensity` override). This used to be multiplied
+// by a stray `* 1000`, which produced ~3.2M line segments (~128 MB of
+// attribute data) per regen; folding the multiplier into this literal keeps
+// the count in the low thousands, matching every other instanced-field scale
+// in this file. This function is only reached for non-LOWFX renders — the
+// caller (makeIslandEdgeMist) already returns null for grass-pattern auras
+// under LOWFX — so there is no separate LOWFX count here.
+const GRASS_AURA_BASE_LINE_COUNT = 3200;
+
+// Blade-height jitter multiplier for grass-aura lines. Tuned alongside the
+// line count above (see git history: "tune: adjust twilight grass aura
+// density") to keep individual blades short/thin relative to how densely
+// packed the ring is — do not change this value without re-tuning the count
+// it was paired with.
+const GRASS_AURA_BLADE_HEIGHT_MULT = 0.23203125;
+
+function makeGrassAuraLineSegments(center, inwardOverlap, outerSoft, aura, colors) {
+  const lineDensity = Math.max(0, aura.lineDensity ?? 1);
+  const count = Math.round(GRASS_AURA_BASE_LINE_COUNT * lineDensity);
+  const positions = new Float32Array(count * 2 * 3);
+  const tipFactors = new Float32Array(count * 2);
+  const seeds = new Float32Array(count * 2);
+  const y = (aura.y ?? 0.02) + 0.06;
+  const span = Math.max(0.1, inwardOverlap + outerSoft);
+
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radial = -inwardOverlap + Math.pow(Math.random(), 0.72) * span;
+    const r = Math.max(0.1, edgeRadiusAtAngle(center, angle) + radial);
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    const tangent = angle + Math.PI / 2;
+    const outward = angle;
+    const h = (0.46 + Math.random() * 1.05) * GRASS_AURA_BLADE_HEIGHT_MULT;
+    const lean = (Math.random() - 0.5) * 0.34;
+    const outLean = (Math.random() - 0.35) * 0.14;
+    const tipX = x + Math.cos(tangent) * lean + Math.cos(outward) * outLean;
+    const tipZ = z + Math.sin(tangent) * lean + Math.sin(outward) * outLean;
+    const base = i * 6;
+    positions[base + 0] = x;
+    positions[base + 1] = y;
+    positions[base + 2] = z;
+    positions[base + 3] = tipX;
+    positions[base + 4] = y + h;
+    positions[base + 5] = tipZ;
+    tipFactors[i * 2] = 0;
+    tipFactors[i * 2 + 1] = 1;
+    const seed = Math.random() * 1000;
+    seeds[i * 2] = seed;
+    seeds[i * 2 + 1] = seed;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute("aTipFactor", new THREE.BufferAttribute(tipFactors, 1));
+  geo.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    transparent: false,
+    depthWrite: true,
+    depthTest: true,
+    fog: false,
+    uniforms: {
+      uTime: state.windUniforms.uTime,
+      uWindStrength: { value: aura.windStrength ?? 0.85 },
+      uColRoot: { value: colors.root.clone().multiplyScalar(0.50) },
+      uColTip: { value: colors.tip.clone().multiplyScalar(0.70) },
+      uColLight: { value: colors.light.clone().multiplyScalar(0.76) },
+    },
+    vertexShader: `
+      precision highp float;
+      attribute float aTipFactor;
+      attribute float aSeed;
+      uniform float uTime;
+      uniform float uWindStrength;
+      varying float vTip;
+      varying float vSeed;
+      void main() {
+        vec3 p = position;
+        float phase = aSeed * 6.2831;
+        float sway = sin(uTime * 0.72 + phase) * 0.18 + sin(uTime * 1.17 + phase * 0.37) * 0.08;
+        vec2 radial = normalize(p.xz + vec2(0.001, 0.0));
+        vec2 tangent = vec2(-radial.y, radial.x);
+        p.xz += (tangent * sway + radial * sway * 0.32) * aTipFactor * uWindStrength;
+        vTip = aTipFactor;
+        vSeed = fract(aSeed * 0.173);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform vec3 uColRoot;
+      uniform vec3 uColTip;
+      uniform vec3 uColLight;
+      varying float vTip;
+      varying float vSeed;
+      void main() {
+        vec3 col = mix(uColRoot, uColTip, vTip);
+        col = mix(col, uColLight, smoothstep(0.72, 1.0, vTip) * smoothstep(0.45, 1.0, vSeed) * 0.45);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  });
+
+  const lines = new THREE.LineSegments(geo, mat);
+  lines.name = "island-edge-grass-lines";
+  lines.frustumCulled = false;
+  lines.renderOrder = -14;
+  return lines;
+}
+
+/**
+ * Build the low perimeter aura ringing the island edge — either a misty
+ * fog band or, for biomes with `edgeAura.pattern === "grass"`, a painted
+ * grass-colored ground ring plus a `LineSegments` field of individual grass
+ * blades (skipped under LOWFX). The aura band is generated from the active
+ * layout shape (not a plain circular RingGeometry), so oblong island edges
+ * and their grass/mist rings share the same perimeter.
+ * @param {object} biome - biome config; reads `edgeAura` (pattern/colors/sizing overrides), `fog`, `accent`, `sun`, `ground`.
+ * @returns {THREE.Mesh|THREE.Group|null} null when no usable layout center is found (or a grass aura is requested under LOWFX).
+ */
+export function makeIslandEdgeMist(biome) {
+  const centers = state.currentLayout?.centers ?? [];
+  const aura = biome.edgeAura ?? {};
+  const pattern = aura.pattern ?? "mist";
+  const isGrassAura = pattern === "grass";
+  if (isGrassAura && LOWFX) return null;
+  const hasExplicitAura = !!biome.edgeAura;
+  const roundCenter = centers.find((c) => (c.shape?.kind ?? "round") === "round");
+  const center = roundCenter ?? (isGrassAura || hasExplicitAura ? centers[0] : null);
+  if (!center) return null;
+
+  const radius = center.visualRadius ?? center.radius;
+  const innerSoft = aura.innerSoft ?? Math.max(1.0, radius * 0.04);
+  const outerSoft = aura.outerSoft ?? Math.max(24.0, center.radius * 1.36);
+  const inwardOverlap = aura.inwardOverlap ?? innerSoft;
+  const geo = makeEdgeAuraGeometry(
+    center,
+    inwardOverlap,
+    outerSoft,
+    LOWFX ? 4 : 7,
+    LOWFX ? 96 : 160
+  );
+
+  const colors = aura.colors ?? [];
+  let colA = colors[0]
+    ? new THREE.Color(colors[0])
+    : new THREE.Color("#8f8f9a").lerp(new THREE.Color(biome.fog), 0.25);
+  let colB = colors[1]
+    ? new THREE.Color(colors[1])
+    : new THREE.Color("#d4d0c2").lerp(new THREE.Color(biome.fog), 0.18);
+  let colC = colors[2]
+    ? new THREE.Color(colors[2])
+    : new THREE.Color(biome.accent ?? biome.sun ?? "#ffffff");
+
+  if (isGrassAura) {
+    // The edge aura is unlit ShaderMaterial, while the real grass is a lit
+    // MeshStandardMaterial in contact shadow. Use the darker ground ramp and
+    // pre-darken it so the ring matches the perceived grass color instead of
+    // blooming toward the bright sky/fog palette.
+    const low = new THREE.Color(biome.ground?.[0] ?? colors[0] ?? "#5d3a1f");
+    const mid = new THREE.Color(biome.ground?.[1] ?? colors[1] ?? "#8a5a2c");
+    colA = low.clone().lerp(mid, 0.18).offsetHSL(0, 0.10, -0.14);
+    colB = low.clone().lerp(mid, 0.36).offsetHSL(0, 0.04, -0.10);
+    colC = colB.clone().offsetHSL(0, -0.04, 0.02);
+  }
+
+  const mat = new THREE.ShaderMaterial({
+    transparent: !isGrassAura,
+    depthWrite: isGrassAura,
+    depthTest: true,
+    fog: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime: state.windUniforms.uTime,
+      uRadius: { value: radius },
+      uInnerSoft: { value: innerSoft },
+      uOuterSoft: { value: outerSoft },
+      uOutwardFadeStart: { value: aura.outwardFadeStart ?? 0.62 },
+      uPattern: { value: pattern === "grass" ? 1 : 0 },
+      uColA: { value: colA },
+      uColB: { value: colB },
+      uColC: { value: colC },
+      uAlpha: { value: aura.alpha ?? 1.0 },
+      uNoiseScale: { value: aura.noiseScale ?? 0.058 },
+      uStreakScale: { value: aura.streakScale ?? 12.0 },
+      uWindStrength: { value: aura.windStrength ?? 0.65 },
+    },
+    vertexShader: `
+      attribute float aEdgeRadial;
+      varying vec2 vLocalXZ;
+      varying float vRadial;
+      void main() {
+        vLocalXZ = position.xy;
+        vRadial = aEdgeRadial;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform float uTime;
+      uniform float uRadius;
+      uniform float uInnerSoft;
+      uniform float uOuterSoft;
+      uniform float uOutwardFadeStart;
+      uniform float uPattern;
+      uniform vec3 uColA;
+      uniform vec3 uColB;
+      uniform vec3 uColC;
+      uniform float uAlpha;
+      uniform float uNoiseScale;
+      uniform float uStreakScale;
+      uniform float uWindStrength;
+      varying vec2 vLocalXZ;
+      varying float vRadial;
+
+      ${GLSL_HASH2}
+      ${GLSL_VALUE_NOISE}
+      float fbm(vec2 p) {
+        float a = vnoise(p);
+        float b = vnoise(p * 2.17 + vec2(4.2, -1.7));
+        float c = vnoise(p * 4.03 + vec2(-2.6, 3.1));
+        return a * 0.55 + b * 0.30 + c * 0.15;
+      }
+
+      void main() {
+        float radial = vRadial;
+        float inward = smoothstep(-uInnerSoft, 0.25, radial);
+        float outward = 1.0 - smoothstep(uOuterSoft * uOutwardFadeStart, uOuterSoft, radial);
+        float edge = inward * outward;
+        float seam = 1.0 - smoothstep(0.0, uInnerSoft * 0.55, abs(radial));
+        vec2 base = vLocalXZ * uNoiseScale;
+        vec2 driftA = vec2(uTime * 0.032, -uTime * 0.021) * uWindStrength;
+        vec2 driftB = vec2(-uTime * 0.018, uTime * 0.027) * uWindStrength;
+        vec2 domainWarp = vec2(
+          fbm(base * 1.7 + driftA + vec2(2.4, -1.1)),
+          fbm(base * 1.5 + driftB + vec2(-3.2, 2.7))
+        ) - 0.5;
+        vec2 p = base + domainWarp * 1.85;
+        float waveA = fbm(p + driftA);
+        float waveB = fbm(p * 1.85 - driftB + vec2(3.1, -2.4));
+        float waveC = fbm(p * 3.2 + domainWarp * 0.75 + vec2(-1.7, 4.0));
+        float n = waveA * 0.50 + waveB * 0.33 + waveC * 0.17;
+
+        if (uPattern > 0.5) {
+          float angle = atan(vLocalXZ.y, vLocalXZ.x);
+          float innerFade = smoothstep(-uInnerSoft, -0.05, radial);
+          float outerFade = 1.0 - smoothstep(uOuterSoft * 0.86, uOuterSoft, radial);
+          float grassBand = innerFade * outerFade;
+          float fieldDensity = smoothstep(0.12, 0.82, fbm(vec2(angle * 9.0, radial * 0.45) + driftA));
+          vec3 fieldCol = mix(uColA, uColB, fieldDensity * 0.55);
+          fieldCol *= mix(0.50, 0.66, fieldDensity);
+          fieldCol *= mix(0.78, 0.90, grassBand);
+          gl_FragColor = vec4(fieldCol, 1.0);
+          return;
+        }
+
+        float tufts = smoothstep(0.20, 0.82, n);
+        float wisps = smoothstep(0.10, 0.70, waveA * 0.6 + waveB * 0.4);
+        float a = (edge * mix(0.58, 0.95, tufts) + seam * 0.38) * mix(0.82, 1.0, wisps) * uAlpha;
+        if (a < 0.006) discard;
+        vec3 col = mix(uColA, uColB, tufts * 0.34 + seam * 0.10);
+        gl_FragColor = vec4(col, a);
+      }
+    `,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = pattern === "grass" ? "island-edge-grass-ground" : "island-edge-mist";
+  mesh.userData.inspect = { category: "atmosphere", variant: mesh.name };
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.frustumCulled = false;
+  mesh.renderOrder = aura.renderOrder ?? -16;
+
+  if (isGrassAura) {
+    const group = new THREE.Group();
+    group.name = "island-edge-grass-aura";
+    group.userData.inspect = { category: "atmosphere", variant: group.name };
+    group.position.set(center.cx, 0, center.cz);
+    mesh.position.y = aura.y ?? 0.02;
+    if (aura.ground !== false) group.add(mesh);
+    group.add(makeGrassAuraLineSegments(center, inwardOverlap, outerSoft, aura, {
+      root: colA,
+      tip: colB,
+      light: colC,
+    }));
+    group.frustumCulled = false;
+    return group;
+  }
+
+  mesh.position.set(center.cx, aura.y ?? 0.38, center.cz);
+  return mesh;
+}
+
+/** Compatibility alias for older world wiring that imported the cloud ring name. See {@link makeIslandEdgeMist}. */
+export const makeIslandCloudRing = makeIslandEdgeMist;
+
+/**
+ * Re-tint the sky dome and mountain backdrop from the current day/night
+ * blend. Called once per frame by `updateDayNight` (world.js).
+ * @param {THREE.Mesh|null} skyDome - value from {@link makeSkyDome}.
+ * @param {THREE.Group|null} mountains - value from {@link makeMountainBackdrop}.
+ * @param {object} dayNight - biome's snapshotted day/dusk/night palette (`sky`, `duskSky`, `nightSky`, `fog`, `duskFog`, `nightFog`).
+ * @param {number} dayFactor - 0..1 day/night blend factor (1 = full day).
+ * @param {number} nightAmt - 0..1 night amount used to fade the mountain rings toward `nightFog`.
+ */
+export function updateSkyColors(skyDome, mountains, dayNight, dayFactor, nightAmt) {
+  if (skyDome) {
+    const u = skyDome.material.uniforms;
+    // Zenith follows the biome's sky color (day → dusk → night)
+    blendDuskDayNight(u.uZenith.value, dayNight.sky, dayNight.duskSky, dayNight.nightSky, dayFactor);
+    // ...darkened a touch toward the horizon shade so we never go pure black
+    u.uZenith.value.offsetHSL(0, 0.02, -0.04);
+    // Horizon follows the fog color
+    blendDuskDayNight(u.uHorizon.value, dayNight.fog, dayNight.duskFog, dayNight.nightFog, dayFactor);
+  }
+  if (mountains) {
+    const ud = mountains.userData;
+    // Far ring nudges toward sky color during day, fog at night
+    ud.farMat.color.copy(ud.farBase).lerp(dayNight.nightFog, nightAmt * 0.6);
+    ud.nearMat.color.copy(ud.nearBase).lerp(dayNight.nightFog, nightAmt * 0.55);
+  }
+}
+
+function blendDuskDayNight(out, day, dusk, night, f) {
+  if (!dusk) return out.copy(day).lerp(night, 1 - f);
+  if (f >= 0.5) return out.copy(dusk).lerp(day, (f - 0.5) * 2);
+  return out.copy(night).lerp(dusk, f * 2);
+}

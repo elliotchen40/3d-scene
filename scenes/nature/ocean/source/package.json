@@ -1,0 +1,30 @@
+{
+  "name": "ultra-realistic-ocean",
+  "version": "1.0.0",
+  "description": "Cinematic physically based ocean renderer built on Three.js r185 (WebGL2): hybrid FFT (Tessendorf) + Gerstner waves, switchable JONSWAP / Phillips / Pierson-Moskowitz spectra, GGX water BRDF, Jacobian foam, HDR reflections and refraction.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "npx --yes serve -l 5173 .",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "three.js",
+    "ocean",
+    "fft",
+    "tessendorf",
+    "gerstner",
+    "water",
+    "pbr",
+    "webgl2",
+    "glsl"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,3690 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.png" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css"
+      integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <!-- 
+    font-family: "Amatic SC", sans-serif;
+    font-family: "Schoolbell", cursive;
+    font-family: "Inter", sans-serif;
+    -->
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Schoolbell&display=swap');
+      @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
+      * {
+        margin: 0;
+        padding: 0;
+
+        &::selection {
+          color: #ede8e4;
+          background-color: #000000;
+        }
+      }
+      html,
+      body {
+        background-color: #ede8e4;
+        overflow: hidden;
+      }
+      #three {
+        position: fixed;
+        top: 0;
+        left: 0;
+        outline: none;
+      }
+      #shader-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1001;
+        pointer-events: none;
+      }
+      #loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          145deg,
+          #f5f0ec 0%,
+          #ede8e4 50%,
+          #e5dfd9 100%
+        );
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 1002;
+        transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        gap: 28px;
+      }
+      #loader::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: radial-gradient(
+            ellipse at 20% 30%,
+            rgba(253, 230, 27, 0.08) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            ellipse at 80% 70%,
+            rgba(191, 5, 5, 0.05) 0%,
+            transparent 50%
+          );
+        pointer-events: none;
+      }
+      #loader.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .loader-title {
+        font-family: 'Schoolbell', sans-serif;
+        font-size: 3.2rem;
+        font-weight: 700;
+        color: #000;
+        text-align: center;
+        position: relative;
+        display: inline-block;
+        margin-bottom: 0;
+        letter-spacing: 1px;
+        animation: titlePulse 4s ease-in-out infinite;
+      }
+      @keyframes titlePulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.85;
+        }
+      }
+      .loader-title .fa-square {
+        position: absolute;
+        top: -0.4em;
+        left: -0.8em;
+        font-size: 0.55em;
+        background: linear-gradient(
+          135deg,
+          #fde61b 0%,
+          #f69e02 30%,
+          #fa5a03 60%,
+          #bf0505 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        transform: rotate(-25deg);
+        animation: leafFloat 3s ease-in-out infinite;
+        filter: drop-shadow(0 2px 4px rgba(246, 158, 2, 0.3));
+      }
+      @keyframes leafFloat {
+        0%,
+        100% {
+          transform: rotate(-25deg) translateY(0px) scale(1);
+        }
+        50% {
+          transform: rotate(-18deg) translateY(-4px) scale(1.05);
+        }
+      }
+      .loader-progress {
+        width: 380px;
+        height: 3px;
+        background: rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+        margin: 0;
+        border-radius: 4px;
+        position: relative;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+      }
+      .loader-progress::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.4),
+          transparent
+        );
+        animation: shimmer 2s infinite;
+      }
+      @keyframes shimmer {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+      .loader-progress-bar {
+        height: 100%;
+        background: linear-gradient(
+          90deg,
+          rgba(0, 0, 0, 0.5) 0%,
+          rgba(0, 0, 0, 0.7) 50%,
+          rgba(0, 0, 0, 0.5) 100%
+        );
+        width: 0%;
+        transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 4px;
+        position: relative;
+      }
+      .loader-progress-bar::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: -2px;
+        bottom: -2px;
+        width: 8px;
+        background: rgba(0, 0, 0, 0.9);
+        border-radius: 4px;
+        box-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+      }
+      .loader-text {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.82rem;
+        color: rgba(0, 0, 0, 0.45);
+        text-align: center;
+        line-height: 1.6;
+        max-width: 400px;
+        margin: 0;
+        min-height: 40px;
+        letter-spacing: 0.3px;
+        transition: color 0.3s ease;
+      }
+      .explore-buttons {
+        display: flex;
+        gap: 14px;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        visibility: hidden;
+      }
+      .explore-button {
+        padding: 15px 28px;
+        border-radius: 14px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.85rem;
+        font-weight: 500;
+        letter-spacing: 0.4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        margin: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .explore-button::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: radial-gradient(
+          circle,
+          rgba(255, 255, 255, 0.15) 0%,
+          transparent 70%
+        );
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.4s ease, height 0.4s ease;
+      }
+      .explore-button:hover::before {
+        width: 200%;
+        height: 200%;
+      }
+      .explore-button-light {
+        background: linear-gradient(145deg, #f5f0ec, #e5dfd9);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        color: rgba(0, 0, 0, 0.8);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08),
+          0 1px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+      }
+      .explore-button-light:hover {
+        background: linear-gradient(145deg, #ffffff, #f0ebe7);
+        border-color: rgba(0, 0, 0, 0.1);
+        color: rgba(0, 0, 0, 1);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+      }
+      .explore-button-light:active {
+        transform: translateY(0px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      }
+      .explore-button-dark {
+        background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25),
+          0 1px 4px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+      }
+      .explore-button-dark:hover {
+        background: linear-gradient(145deg, #1e1e1e, #252525);
+        border-color: rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 1);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15),
+          inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      }
+      .explore-button-dark:active {
+        transform: translateY(0px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      }
+      .explore-button-dark::before {
+        background: radial-gradient(
+          circle,
+          rgba(255, 255, 255, 0.08) 0%,
+          transparent 70%
+        );
+      }
+      .explore-buttons.show {
+        opacity: 1;
+        transform: translateY(0px);
+        visibility: visible;
+      }
+      .explore-button i {
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        font-size: 0.8rem;
+      }
+      .explore-button:hover i {
+        transform: scale(1.15);
+      }
+      #control-panel {
+        position: fixed;
+        right: calc(24px + env(safe-area-inset-right, 0px));
+        bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+        display: none;
+        flex-direction: column;
+        gap: 14px;
+        z-index: 1000;
+      }
+      #control-panel.show {
+        display: flex;
+        animation: controlPanelFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)
+          forwards;
+      }
+      #music-control {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #f5f0ec, #e5dfd9);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        color: #000;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08),
+          0 1px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+        font-family: 'Inter', sans-serif;
+        position: relative;
+        overflow: hidden;
+      }
+      #music-control::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: radial-gradient(
+          circle,
+          rgba(0, 0, 0, 0.08) 0%,
+          transparent 70%
+        );
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.4s ease, height 0.4s ease;
+      }
+      #music-control:hover::before {
+        width: 120%;
+        height: 120%;
+      }
+      #music-control:hover {
+        transform: translateY(-3px) scale(1.05);
+        background: linear-gradient(145deg, #ffffff, #f0ebe7);
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12),
+          0 4px 12px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1);
+      }
+      #music-control:active {
+        transform: translateY(-1px) scale(1.02);
+      }
+      #music-control.muted {
+        background: linear-gradient(145deg, #d8d0c8, #c8bfb7);
+        color: rgba(0, 0, 0, 0.4);
+        border-color: rgba(0, 0, 0, 0.04);
+      }
+      #music-control.muted:hover {
+        background: linear-gradient(145deg, #d0c8c0, #c0b7af);
+        color: rgba(0, 0, 0, 0.6);
+      }
+      .lightning-btn-wrapper {
+        position: relative;
+        display: none;
+        opacity: 0;
+        transform: scale(0.8) translateY(20px);
+        transition: opacity 0.4s ease,
+          transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        width: 46px;
+        height: 46px;
+      }
+      .lightning-btn-wrapper.show {
+        display: block;
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+      .lightning-btn {
+        position: relative;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #080c1a, #0f1628);
+        border: 2px solid #00d4ff;
+        color: #00ffff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 0 20px rgba(0, 212, 255, 0.5),
+          0 0 40px rgba(0, 212, 255, 0.2), 0 4px 15px rgba(0, 0, 0, 0.4),
+          inset 0 0 15px rgba(0, 212, 255, 0.1);
+        z-index: 2;
+      }
+      .lightning-btn i {
+        color: #00ffff;
+        text-shadow: 0 0 10px #00ffff, 0 0 20px #00d4ff, 0 0 30px #0099ff,
+          0 0 40px rgba(0, 255, 255, 0.5);
+        animation: bolt-pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes bolt-pulse {
+        0%,
+        100% {
+          text-shadow: 0 0 10px #00ffff, 0 0 20px #00d4ff, 0 0 30px #0099ff;
+          transform: scale(1);
+        }
+        50% {
+          text-shadow: 0 0 15px #ffffff, 0 0 25px #00ffff, 0 0 40px #00d4ff,
+            0 0 60px #0099ff;
+          transform: scale(1.15);
+        }
+      }
+      .lightning-btn:hover {
+        background: linear-gradient(145deg, #0a1020, #141e38);
+        border-color: #00ffff;
+        box-shadow: 0 0 30px rgba(0, 255, 255, 0.6),
+          0 0 50px rgba(0, 212, 255, 0.3), 0 6px 20px rgba(0, 0, 0, 0.5),
+          inset 0 0 20px rgba(0, 255, 255, 0.15);
+      }
+      .lightning-btn:active {
+        transform: translateY(0) scale(0.95);
+      }
+      .electric-arcs {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 46px;
+        height: 46px;
+        pointer-events: none;
+        z-index: 3;
+      }
+      .arc {
+        position: absolute;
+        top: -7px;
+        left: -6px;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        opacity: 0;
+      }
+      .lightning-btn-wrapper.show .arc {
+        animation: arc-spark 2s linear infinite;
+      }
+      .arc-1 {
+        border-top-color: #00ffff;
+        border-right-color: #00d4ff;
+        filter: drop-shadow(0 0 4px #00ffff) drop-shadow(0 0 8px #00d4ff)
+          drop-shadow(0 0 15px #0099ff);
+        animation-delay: 0s !important;
+      }
+      .arc-2 {
+        border-bottom-color: #00b4ff;
+        border-left-color: #0088ff;
+        filter: drop-shadow(0 0 4px #00b4ff) drop-shadow(0 0 8px #0088ff)
+          drop-shadow(0 0 15px #0066ff);
+        animation-delay: 0.5s !important;
+      }
+      .arc-3 {
+        border-top-color: #00d4ff;
+        border-left-color: #00ffff;
+        filter: drop-shadow(0 0 4px #00ffff) drop-shadow(0 0 8px #00d4ff)
+          drop-shadow(0 0 15px #0099ff);
+        animation-delay: 1s !important;
+      }
+      .arc-4 {
+        border-bottom-color: #0088ff;
+        border-right-color: #00b4ff;
+        filter: drop-shadow(0 0 4px #00b4ff) drop-shadow(0 0 8px #0088ff)
+          drop-shadow(0 0 15px #0066ff);
+        animation-delay: 1.5s !important;
+      }
+      @keyframes arc-spark {
+        0% {
+          opacity: 0;
+          transform: rotate(0deg) scale(0.95);
+        }
+        15% {
+          opacity: 1;
+        }
+        35% {
+          opacity: 0.9;
+        }
+        50% {
+          opacity: 0;
+          transform: rotate(180deg) scale(1.05);
+        }
+        100% {
+          opacity: 0;
+          transform: rotate(360deg) scale(0.95);
+        }
+      }
+      .lightning-btn-wrapper.striking .lightning-btn {
+        background: linear-gradient(145deg, #1a1a3a, #2a2a5a);
+        border-color: #ffffff;
+        box-shadow: 0 0 50px rgba(0, 255, 255, 1),
+          0 0 80px rgba(0, 180, 255, 0.8), 0 0 100px rgba(0, 212, 255, 0.6),
+          inset 0 0 30px rgba(255, 255, 255, 0.3);
+      }
+      .lightning-btn-wrapper.striking .lightning-btn i {
+        animation: none;
+        color: #ffffff;
+        text-shadow: 0 0 20px #ffffff, 0 0 40px #00ffff, 0 0 60px #00d4ff,
+          0 0 80px #0088ff;
+        transform: scale(1.3);
+      }
+      .lightning-btn-wrapper.striking .arc {
+        animation: arc-flash 0.4s ease-out !important;
+        animation-delay: 0s !important;
+      }
+      @keyframes arc-flash {
+        0% {
+          opacity: 1;
+          transform: scale(1);
+          border-color: #ffffff;
+          filter: drop-shadow(0 0 15px #ffffff) drop-shadow(0 0 30px #00ffff);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.8);
+          filter: drop-shadow(0 0 25px #00ffff) drop-shadow(0 0 40px #0088ff);
+        }
+      }
+      #daynight-toggle {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: linear-gradient(145deg, #f5f0ec, #e5dfd9);
+        backdrop-filter: blur(20px);
+        border-radius: 28px;
+        padding: 8px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08),
+          0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.02);
+        border: 1px solid rgba(0, 0, 0, 0.04);
+        width: fit-content;
+      }
+      .daynight-button {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        color: rgba(0, 0, 0, 0.5);
+        background: transparent;
+        transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        position: relative;
+        overflow: hidden;
+      }
+      .daynight-button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: 50%;
+        background: transparent;
+        transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        z-index: -1;
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      .daynight-button:hover {
+        transform: scale(1.1);
+        color: rgba(0, 0, 0, 0.75);
+      }
+      .daynight-button:hover::before {
+        background: rgba(0, 0, 0, 0.06);
+        opacity: 1;
+        transform: scale(1);
+      }
+      .daynight-button:active {
+        transform: scale(1.05);
+      }
+      .daynight-button.active {
+        color: white;
+        transform: scale(1.12);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.12);
+      }
+      .daynight-button.active::before {
+        opacity: 1;
+        transform: scale(1);
+      }
+      .daynight-button.active.day::before {
+        background: linear-gradient(
+          145deg,
+          #ffdd44 0%,
+          #ffb800 50%,
+          #ff9500 100%
+        );
+        box-shadow: 0 0 20px rgba(255, 184, 0, 0.4);
+      }
+      .daynight-button.active.night::before {
+        background: linear-gradient(
+          145deg,
+          #6366f1 0%,
+          #4f46e5 50%,
+          #3730a3 100%
+        );
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+      }
+      #season-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: linear-gradient(145deg, #f5f0ec, #e5dfd9);
+        backdrop-filter: blur(20px);
+        border-radius: 28px;
+        padding: 8px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08),
+          0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.02);
+        border: 1px solid rgba(0, 0, 0, 0.04);
+        width: fit-content;
+      }
+      .season-button {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        color: rgba(0, 0, 0, 0.5);
+        background: transparent;
+        transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        position: relative;
+        overflow: hidden;
+      }
+      .season-button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: 50%;
+        background: transparent;
+        transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        z-index: -1;
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      .season-button:hover {
+        transform: scale(1.1);
+        color: rgba(0, 0, 0, 0.75);
+      }
+      .season-button:hover::before {
+        background: rgba(0, 0, 0, 0.06);
+        opacity: 1;
+        transform: scale(1);
+      }
+      .season-button:active {
+        transform: scale(1.05);
+      }
+      .season-button.active {
+        color: white;
+        transform: scale(1.12);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.12);
+      }
+      .season-button.active::before {
+        opacity: 1;
+        transform: scale(1);
+      }
+      .season-button.active.spring::before {
+        background: linear-gradient(
+          145deg,
+          #22c55e 0%,
+          #16a34a 50%,
+          #15803d 100%
+        );
+        box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+      }
+      .season-button.active.autumn::before {
+        background: linear-gradient(
+          145deg,
+          #f97316 0%,
+          #ea580c 50%,
+          #c2410c 100%
+        );
+        box-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
+      }
+      .season-button.active.winter::before {
+        background: linear-gradient(
+          145deg,
+          #38bdf8 0%,
+          #0ea5e9 50%,
+          #0284c7 100%
+        );
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+      }
+      .season-button.active.rain::before {
+        background: linear-gradient(
+          145deg,
+          #64748b 0%,
+          #475569 50%,
+          #334155 100%
+        );
+        box-shadow: 0 0 20px rgba(100, 116, 139, 0.4);
+      }
+      @keyframes controlPanelFadeIn {
+        0% {
+          opacity: 0;
+          transform: translateY(40px) translateX(40px) scale(0.85);
+          filter: blur(4px);
+        }
+        60% {
+          filter: blur(0);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) translateX(0) scale(1);
+          filter: blur(0);
+        }
+      }
+      #page-title {
+        position: fixed;
+        left: 32px;
+        bottom: 24px;
+        display: none;
+        flex-direction: column;
+        gap: 16px;
+        z-index: 1000;
+        font-family: 'Schoolbell', sans-serif;
+        font-size: 2.8rem;
+        font-weight: 700;
+        color: #ede8e4;
+        text-align: left;
+        position: relative;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3),
+          0 0 40px rgba(0, 0, 0, 0.15);
+        letter-spacing: 1px;
+      }
+      #page-title.show {
+        display: flex;
+        animation: pageTitleFadeIn 1s cubic-bezier(0.25, 0.46, 0.45, 0.94)
+          forwards;
+      }
+      #page-title .fa-square {
+        position: absolute;
+        top: -0.4em;
+        left: -0.8em;
+        font-size: 0.55em;
+        background: linear-gradient(
+          135deg,
+          #fde61b 0%,
+          #f69e02 30%,
+          #fa5a03 60%,
+          #bf0505 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        transform: rotate(-25deg);
+        animation: leafFloat 3s ease-in-out infinite;
+        filter: drop-shadow(0 2px 6px rgba(246, 158, 2, 0.4));
+      }
+      @keyframes pageTitleFadeIn {
+        0% {
+          opacity: 0;
+          transform: translateY(40px) translateX(-40px) scale(0.9);
+          filter: blur(4px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) translateX(0) scale(1);
+          filter: blur(0);
+        }
+      }
+      #page-title {
+        position: fixed;
+        left: calc(24px + env(safe-area-inset-left, 0px));
+        bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+        gap: 16px;
+        z-index: 1000;
+      }
+      #hamburger-menu {
+        position: fixed;
+        top: calc(24px + env(safe-area-inset-top, 0px));
+        right: calc(24px + env(safe-area-inset-right, 0px));
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #f5f0ec, #e5dfd9);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        color: #000;
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08),
+          0 1px 4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+        font-family: 'Inter', sans-serif;
+        z-index: 1000;
+        overflow: hidden;
+      }
+      #hamburger-menu::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: radial-gradient(
+          circle,
+          rgba(0, 0, 0, 0.08) 0%,
+          transparent 70%
+        );
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.4s ease, height 0.4s ease;
+      }
+      #hamburger-menu:hover::before {
+        width: 120%;
+        height: 120%;
+      }
+      #hamburger-menu.show {
+        display: flex;
+        animation: controlPanelFadeIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)
+          forwards;
+      }
+      #hamburger-menu:hover {
+        transform: translateY(-3px) scale(1.05);
+        background: linear-gradient(145deg, #ffffff, #f0ebe7);
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12),
+          0 4px 12px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1);
+      }
+      #hamburger-menu:active {
+        transform: translateY(-1px) scale(1.02);
+      }
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(12px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        opacity: 0;
+        transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .modal-overlay.show {
+        display: flex;
+        opacity: 1;
+      }
+      .modal-container {
+        background: linear-gradient(145deg, #f5f0ec, #ede8e4);
+        border-radius: 20px;
+        width: 90%;
+        max-width: 620px;
+        max-height: 80vh;
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.35),
+          0 16px 40px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        transform: scale(0.92) translateY(30px);
+        transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      .modal-overlay.show .modal-container {
+        transform: scale(1) translateY(0);
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 28px 32px 18px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.5) 0%,
+          transparent 100%
+        );
+      }
+      .modal-title {
+        font-family: 'Schoolbell', cursive;
+        font-size: 2.1rem;
+        color: #000;
+        margin: 0;
+        letter-spacing: 0.5px;
+      }
+      .modal-close {
+        background: transparent;
+        border: none;
+        font-size: 1.1rem;
+        color: rgba(0, 0, 0, 0.5);
+        cursor: pointer;
+        padding: 10px;
+        border-radius: 50%;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+      }
+      .modal-close:hover {
+        background: rgba(0, 0, 0, 0.08);
+        color: rgba(0, 0, 0, 0.8);
+        transform: rotate(90deg);
+      }
+      .modal-tabs {
+        display: flex;
+        background: rgba(0, 0, 0, 0.03);
+        padding: 0;
+        gap: 0;
+      }
+      .tab-button {
+        flex: 1;
+        padding: 16px 24px;
+        background: none;
+        border: none;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.5);
+        cursor: pointer;
+        transition: all 0.25s ease;
+        border-bottom: 2px solid transparent;
+        position: relative;
+      }
+      .tab-button::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 0;
+        height: 2px;
+        background: #000;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transform: translateX(-50%);
+      }
+      .tab-button:hover {
+        color: rgba(0, 0, 0, 0.75);
+        background: rgba(0, 0, 0, 0.03);
+      }
+      .tab-button.active {
+        color: #000;
+        background: linear-gradient(
+          180deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.5) 100%
+        );
+      }
+      .tab-button.active::after {
+        width: 60%;
+      }
+      .modal-content {
+        max-height: 60vh;
+        overflow-y: auto;
+        padding: 0;
+      }
+      .tab-content {
+        display: none;
+        padding: 32px;
+        font-family: 'Inter', sans-serif;
+        animation: fadeInContent 0.3s ease;
+      }
+      @keyframes fadeInContent {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .settings-section {
+        margin-bottom: 28px;
+        padding: 20px;
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.5),
+          rgba(0, 0, 0, 0.01)
+        );
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 0.04);
+      }
+      .settings-section:last-child {
+        margin-bottom: 0;
+      }
+      .section-title {
+        font-family: 'Schoolbell', cursive;
+        font-size: 1.35rem;
+        color: #000;
+        margin: 0 0 16px 0;
+        padding-bottom: 12px;
+        position: relative;
+        display: block;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .section-title::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 50px;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(0, 0, 0, 0.4), transparent);
+        border-radius: 1px;
+      }
+      .setting-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px !important;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        font-size: 14px !important;
+        transition: background 0.2s ease;
+      }
+      .setting-item:hover {
+        background: rgba(0, 0, 0, 0.02);
+        border-radius: 8px;
+      }
+      .setting-item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+      .setting-item label {
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.75);
+        font-size: 0.9rem;
+      }
+      .volume-control {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      #volume-slider {
+        width: 130px;
+        height: 5px;
+        background: rgba(0, 0, 0, 0.12);
+        border-radius: 4px;
+        outline: none;
+        -webkit-appearance: none;
+        transition: background 0.2s ease;
+      }
+      #volume-slider:hover {
+        background: rgba(0, 0, 0, 0.18);
+      }
+      #volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        background: linear-gradient(145deg, #1a1a1a, #000);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      #volume-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+      .volume-value {
+        font-size: 0.82rem;
+        color: rgba(0, 0, 0, 0.5);
+        min-width: 38px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+      .custom-select {
+        position: relative;
+        display: inline-block;
+      }
+      .custom-select select {
+        padding: 10px 36px 10px 14px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 10px;
+        background: linear-gradient(145deg, #ffffff, #f5f0ec);
+        font-family: 'Inter', sans-serif;
+        font-size: 0.88rem;
+        cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        min-width: 130px;
+        transition: all 0.25s ease;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      }
+      .custom-select select:hover {
+        border-color: rgba(0, 0, 0, 0.25);
+        background: linear-gradient(145deg, #ffffff, #f8f4f0);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      }
+      .custom-select select:focus {
+        outline: none;
+        border-color: rgba(0, 0, 0, 0.4);
+        box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+      }
+      .custom-select::after {
+        content: '▼';
+        position: absolute;
+        top: 50%;
+        right: 14px;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: rgba(0, 0, 0, 0.4);
+        font-size: 0.65rem;
+        transition: transform 0.2s ease;
+      }
+      .custom-select:hover::after {
+        transform: translateY(-50%) scale(1.1);
+      }
+      .preset-description {
+        margin-top: 16px;
+        padding: 14px 16px;
+        background: linear-gradient(
+          145deg,
+          rgba(0, 0, 0, 0.03),
+          rgba(0, 0, 0, 0.01)
+        );
+        border-radius: 10px;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+      }
+      .preset-info {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .preset-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .preset-details {
+        font-size: 0.85rem;
+        color: rgba(0, 0, 0, 0.65);
+        line-height: 1.5;
+      }
+      .custom-graphics-options {
+        display: none;
+        margin-top: 20px;
+        padding: 18px;
+        background: linear-gradient(
+          145deg,
+          rgba(0, 0, 0, 0.02),
+          rgba(0, 0, 0, 0.01)
+        );
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        gap: 18px;
+        flex-direction: column;
+      }
+      .custom-graphics-options.show {
+        display: flex;
+        animation: slideDown 0.3s ease;
+      }
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .custom-option {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .custom-option-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .custom-option-header label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.75);
+      }
+      .custom-option-value {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.6);
+        font-variant-numeric: tabular-nums;
+        min-width: 60px;
+        text-align: right;
+      }
+      .custom-slider {
+        width: 100%;
+        height: 6px;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+        outline: none;
+        -webkit-appearance: none;
+        transition: background 0.2s ease;
+      }
+      .custom-slider:hover {
+        background: rgba(0, 0, 0, 0.15);
+      }
+      .custom-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        background: linear-gradient(145deg, #1a1a1a, #000);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      .custom-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+      .custom-option-range {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.7rem;
+        color: rgba(0, 0, 0, 0.4);
+      }
+      .custom-option .custom-select {
+        width: 100%;
+      }
+      .custom-option .custom-select select {
+        width: 100%;
+      }
+      .custom-option .toggle-switch {
+        align-self: flex-start;
+      }
+      .toggle-switch {
+        position: relative;
+        width: 52px;
+        height: 28px;
+      }
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.15);
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 28px;
+      }
+      .toggle-slider:before {
+        position: absolute;
+        content: '';
+        height: 22px;
+        width: 22px;
+        left: 3px;
+        bottom: 3px;
+        background: linear-gradient(145deg, #ffffff, #f0f0f0);
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      }
+      input:checked + .toggle-slider {
+        background: linear-gradient(145deg, #1a1a1a, #000);
+      }
+      input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+      }
+      .about-section {
+        line-height: 1.7;
+      }
+      .about-text {
+        color: rgba(0, 0, 0, 0.65);
+        margin-bottom: 22px;
+        font-size: 0.92rem;
+      }
+      .about-text a {
+        color: #2563eb;
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: all 0.25s ease;
+        font-weight: 500;
+      }
+      .about-text a:hover {
+        color: #1d4ed8;
+        border-bottom-color: #1d4ed8;
+      }
+      .subsection-title {
+        font-family: 'Schoolbell', cursive;
+        font-size: 1.05rem;
+        color: #000;
+        margin: 18px 0 10px 0;
+        font-weight: 600;
+      }
+      .tech-title {
+        font-family: 'Schoolbell', cursive;
+        font-size: 1.25rem;
+        color: #000;
+        margin: 28px 0 14px 0;
+        position: relative;
+        display: inline-block;
+      }
+      .tech-title::before {
+        content: '';
+        position: absolute;
+        left: -12px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 70%;
+        background: linear-gradient(
+          180deg,
+          rgba(0, 0, 0, 0.6),
+          rgba(0, 0, 0, 0.2)
+        );
+        border-radius: 2px;
+      }
+      .tech-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+      .tech-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.6),
+          rgba(0, 0, 0, 0.02)
+        );
+        border-radius: 10px;
+        font-size: 0.82rem;
+        color: rgba(0, 0, 0, 0.7);
+        border: 1px solid rgba(0, 0, 0, 0.04);
+        transition: all 0.25s ease;
+      }
+      .tech-item:hover {
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.9),
+          rgba(0, 0, 0, 0.03)
+        );
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+      }
+      .tech-item i {
+        font-size: 1rem;
+        color: rgba(0, 0, 0, 0.55);
+      }
+      .feature-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .feature-list li {
+        padding: 8px 0;
+        color: rgba(0, 0, 0, 0.65);
+        font-size: 0.88rem;
+        position: relative;
+        padding-left: 22px;
+        transition: color 0.2s ease;
+      }
+      .feature-list li:hover {
+        color: rgba(0, 0, 0, 0.85);
+      }
+      .feature-list li:before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        background: linear-gradient(
+          135deg,
+          rgba(0, 0, 0, 0.4),
+          rgba(0, 0, 0, 0.2)
+        );
+        border-radius: 50%;
+        position: absolute;
+        left: 0;
+        top: 14px;
+      }
+      .credits-section {
+        line-height: 1.7;
+      }
+      .credit-category {
+        margin-bottom: 28px;
+        padding: 18px 20px;
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.5),
+          rgba(0, 0, 0, 0.01)
+        );
+        border-radius: 12px;
+        border-left: 3px solid rgba(0, 0, 0, 0.15);
+        transition: all 0.25s ease;
+      }
+      .credit-category:hover {
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.7),
+          rgba(0, 0, 0, 0.02)
+        );
+        border-left-color: rgba(0, 0, 0, 0.3);
+      }
+      .credit-title {
+        font-family: 'Schoolbell', cursive;
+        font-size: 1.25rem;
+        color: #000;
+        margin: 0 0 14px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .credit-item {
+        padding: 10px 0;
+        color: rgba(0, 0, 0, 0.65);
+        font-size: 0.88rem;
+        line-height: 1.6;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+        transition: color 0.2s ease;
+      }
+      .credit-item:hover {
+        color: rgba(0, 0, 0, 0.85);
+      }
+      .credit-item:last-child {
+        border-bottom: none;
+      }
+      .credit-item strong {
+        color: rgba(0, 0, 0, 0.85);
+        font-weight: 600;
+      }
+      .credit-item a {
+        color: #2563eb;
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: all 0.25s ease;
+      }
+      .credit-item a:hover {
+        color: #1d4ed8;
+        border-bottom-color: #1d4ed8;
+      }
+      .version-info {
+        text-align: center;
+        margin-top: 36px;
+        padding-top: 28px;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        color: rgba(0, 0, 0, 0.4);
+        font-size: 0.82rem;
+        letter-spacing: 0.3px;
+      }
+      .modal-content::-webkit-scrollbar {
+        width: 8px;
+      }
+      .modal-content::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.04);
+        border-radius: 4px;
+      }
+      .modal-content::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 4px;
+        transition: background 0.2s ease;
+      }
+      .modal-content::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 0, 0, 0.35);
+      }
+      @media (max-width: 768px) {
+        .loader-title {
+          font-size: 2.6rem;
+        }
+
+        .loader-progress {
+          width: 280px;
+        }
+
+        .explore-buttons {
+          flex-direction: column;
+          gap: 12px;
+          width: 50%;
+        }
+
+        .explore-button {
+          width: 100%;
+          justify-content: center;
+          padding: 14px 24px;
+        }
+
+        #control-panel {
+          gap: 16px;
+        }
+
+        #daynight-toggle,
+        #season-menu {
+          padding: 6px;
+          gap: 4px;
+        }
+
+        .daynight-button,
+        .season-button {
+          width: 30px;
+          height: 30px;
+          font-size: 0.9rem;
+        }
+
+        #music-control {
+          width: 44px;
+          height: 44px;
+        }
+
+        #page-title {
+          font-size: 2.2rem;
+          left: calc(24px + env(safe-area-inset-left, 0px));
+          bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .modal-container {
+          width: 95%;
+          max-height: 85vh;
+          border-radius: 16px;
+        }
+
+        .modal-header {
+          padding: 20px 24px 12px;
+        }
+
+        .modal-title {
+          font-size: 1.6rem;
+        }
+
+        .tab-content {
+          padding: 24px 20px;
+        }
+
+        .tech-grid {
+          grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        }
+
+        .setting-item {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 14px !important;
+        }
+
+        .setting-item:hover {
+          margin: 0;
+        }
+
+        .setting-item label {
+          font-size: 0.92rem;
+          font-weight: 600;
+          color: rgba(0, 0, 0, 0.8);
+        }
+
+        .settings-section {
+          padding: 16px;
+          margin-bottom: 20px;
+        }
+
+        .section-title {
+          font-size: 1.25rem;
+          margin-bottom: 14px;
+          padding-bottom: 10px;
+        }
+
+        .volume-control {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        #volume-slider {
+          flex: 1;
+          max-width: none;
+          width: 100%;
+        }
+
+        .custom-select {
+          width: 100%;
+        }
+
+        .custom-select select {
+          width: 100%;
+          min-width: unset;
+        }
+
+        .preset-description {
+          margin-top: 14px;
+          padding: 12px 14px;
+        }
+
+        .preset-details {
+          font-size: 0.82rem;
+        }
+
+        .custom-graphics-options {
+          margin-top: 16px;
+          padding: 14px;
+          gap: 16px;
+        }
+
+        .custom-option-header label {
+          font-size: 0.82rem;
+        }
+
+        .custom-option-value {
+          font-size: 0.78rem;
+        }
+
+        .credit-category {
+          padding: 14px 16px;
+        }
+
+        .about-text,
+        .credit-item {
+          font-size: 0.85rem;
+        }
+
+        .feature-list li {
+          font-size: 0.85rem;
+        }
+      }
+      @media (max-width: 480px) {
+        .loader-title {
+          font-size: 2.1rem;
+          padding: 0 20px;
+        }
+
+        .loader-title .fa-square {
+          font-size: 0.5em;
+          left: -0.6em;
+        }
+
+        .loader-progress {
+          width: 240px;
+        }
+
+        .loader-text {
+          font-size: 0.78rem;
+          padding: 0 24px;
+        }
+
+        .explore-buttons {
+          width: 85%;
+          max-width: 280px;
+        }
+
+        .explore-button {
+          padding: 13px 20px;
+          font-size: 0.82rem;
+          border-radius: 10px;
+        }
+
+        #hamburger-menu {
+          top: calc(12px + env(safe-area-inset-top, 0px));
+          right: calc(12px + env(safe-area-inset-right, 0px));
+          width: 40px;
+          height: 40px;
+          font-size: 0.9rem;
+        }
+
+        #control-panel {
+          gap: 10px;
+        }
+
+        #daynight-toggle,
+        #season-menu {
+          padding: 5px;
+          gap: 3px;
+          border-radius: 22px;
+        }
+
+        .daynight-button,
+        .season-button {
+          width: 28px;
+          height: 28px;
+          font-size: 0.85rem;
+        }
+
+        .daynight-button.active,
+        .season-button.active {
+          transform: scale(1.08);
+        }
+
+        #music-control {
+          width: 40px;
+          height: 40px;
+          font-size: 0.9rem;
+        }
+
+        #page-title {
+          font-size: 1.8rem;
+          left: calc(12px + env(safe-area-inset-left, 0px));
+          bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+
+        #page-title .fa-square {
+          font-size: 0.5em;
+        }
+
+        .modal-container {
+          width: 96%;
+          max-height: 88vh;
+          border-radius: 14px;
+        }
+
+        .modal-header {
+          padding: 16px 18px 10px;
+        }
+
+        .modal-title {
+          font-size: 1.4rem;
+        }
+
+        .modal-close {
+          width: 36px;
+          height: 36px;
+        }
+
+        .modal-tabs {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .tab-button {
+          padding: 12px 14px;
+          font-size: 0.82rem;
+          white-space: nowrap;
+        }
+
+        .tab-content {
+          padding: 18px 16px;
+        }
+
+        .section-title {
+          font-size: 1.15rem;
+          margin-bottom: 12px;
+          padding-bottom: 8px;
+        }
+
+        .settings-section {
+          padding: 14px;
+          margin-bottom: 16px;
+          border-radius: 12px;
+        }
+
+        .setting-item {
+          padding: 12px 0;
+          gap: 10px;
+        }
+
+        .setting-item label {
+          font-size: 0.88rem;
+        }
+
+        #volume-slider {
+          height: 6px;
+        }
+
+        #volume-slider::-webkit-slider-thumb {
+          width: 20px;
+          height: 20px;
+        }
+
+        .volume-value {
+          font-size: 0.85rem;
+          min-width: 42px;
+        }
+
+        .tech-title {
+          font-size: 1.1rem;
+          margin: 20px 0 12px 0;
+        }
+
+        .tech-grid {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+        }
+
+        .tech-item {
+          padding: 8px 10px;
+          font-size: 0.78rem;
+        }
+
+        .custom-select select {
+          min-width: 100%;
+          font-size: 0.85rem;
+        }
+
+        .preset-description {
+          margin-top: 12px;
+          padding: 10px 12px;
+        }
+
+        .preset-label {
+          font-size: 0.7rem;
+        }
+
+        .preset-details {
+          font-size: 0.78rem;
+        }
+
+        .custom-graphics-options {
+          margin-top: 14px;
+          padding: 12px;
+          gap: 14px;
+        }
+
+        .custom-option-header label {
+          font-size: 0.8rem;
+        }
+
+        .custom-option-value {
+          font-size: 0.75rem;
+        }
+
+        .custom-slider {
+          height: 8px;
+        }
+
+        .custom-slider::-webkit-slider-thumb {
+          width: 20px;
+          height: 20px;
+        }
+
+        .custom-option-range {
+          font-size: 0.65rem;
+        }
+
+        .credit-category {
+          padding: 12px 14px;
+          margin-bottom: 20px;
+        }
+
+        .credit-title {
+          font-size: 1.1rem;
+        }
+
+        .about-text {
+          font-size: 0.82rem;
+          margin-bottom: 18px;
+        }
+
+        .credit-item {
+          font-size: 0.82rem;
+          padding: 8px 0;
+        }
+
+        .feature-list li {
+          font-size: 0.82rem;
+          padding-left: 18px;
+        }
+
+        .version-info {
+          font-size: 0.78rem;
+          margin-top: 24px;
+          padding-top: 20px;
+        }
+
+        .lightning-btn-wrapper {
+          width: 40px;
+          height: 40px;
+        }
+
+        .lightning-btn {
+          width: 40px;
+          height: 40px;
+          font-size: 0.95rem;
+        }
+
+        .electric-arcs {
+          width: 40px;
+          height: 40px;
+        }
+
+        .arc {
+          top: -6px;
+          left: -5px;
+          width: 48px;
+          height: 48px;
+        }
+      }
+      @media (max-width: 360px) {
+        .loader-title {
+          font-size: 1.8rem;
+        }
+
+        .loader-progress {
+          width: 200px;
+        }
+
+        .explore-buttons {
+          width: 90%;
+        }
+
+        .explore-button {
+          padding: 12px 16px;
+          font-size: 0.8rem;
+          gap: 8px;
+        }
+
+        #page-title {
+          font-size: 1.5rem;
+        }
+
+        .modal-container {
+          width: 98%;
+          border-radius: 12px;
+        }
+
+        .tab-button {
+          padding: 10px 12px;
+          font-size: 0.78rem;
+        }
+
+        .tab-content {
+          padding: 14px 12px;
+        }
+
+        .settings-section {
+          padding: 12px;
+          margin-bottom: 14px;
+          border-radius: 10px;
+        }
+
+        .section-title {
+          font-size: 1.05rem;
+          margin-bottom: 10px;
+        }
+
+        .setting-item {
+          padding: 10px 0;
+          gap: 8px;
+        }
+
+        .setting-item label {
+          font-size: 0.85rem;
+        }
+
+        .volume-value {
+          font-size: 0.82rem;
+        }
+
+        .tech-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-height: 500px) and (orientation: landscape) {
+        #loader {
+          gap: 16px;
+        }
+
+        .loader-title {
+          font-size: 2rem;
+        }
+
+        .loader-progress {
+          width: 300px;
+        }
+
+        .explore-buttons {
+          flex-direction: row;
+          gap: 12px;
+        }
+
+        .explore-button {
+          width: auto;
+          padding: 10px 20px;
+        }
+
+        .modal-container {
+          max-height: 95vh;
+        }
+
+        .modal-content {
+          max-height: 50vh;
+        }
+
+        #control-panel {
+          flex-direction: row;
+          top: auto;
+        }
+
+        #page-title {
+          left: calc(24px + env(safe-area-inset-left, 0px));
+          bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+          font-size: 3.6vw;
+        }
+
+        #daynight-toggle,
+        #season-menu {
+          flex-direction: row;
+        }
+      }
+    </style>
+    <title>Elemental Serenity</title>
+    <script type="module" crossorigin src="./assets/index-D6RMkLzm.js"></script>
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <canvas id="three"></canvas>
+
+    <!-- Shader Reveal Overlay -->
+    <canvas id="shader-overlay"></canvas>
+
+    <!-- Hamburger Menu Button -->
+    <button id="hamburger-menu" title="Settings">
+      <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Right Side Control Panel -->
+    <div id="control-panel">
+      <!-- Day/Night Toggle -->
+      <div id="daynight-toggle">
+        <button class="daynight-button active day" data-time="day" title="Day">
+          <i class="fas fa-sun"></i>
+        </button>
+        <button class="daynight-button night" data-time="night" title="Night">
+          <i class="fas fa-moon"></i>
+        </button>
+      </div>
+
+      <!-- Season Toggle Menu -->
+      <div id="season-menu">
+        <button
+          class="season-button active spring"
+          data-season="spring"
+          title="Spring"
+        >
+          <i class="fas fa-seedling"></i>
+        </button>
+        <button
+          class="season-button autumn"
+          data-season="autumn"
+          title="Autumn"
+        >
+          <i class="fa-brands fa-canadian-maple-leaf"></i>
+        </button>
+        <button
+          class="season-button winter"
+          data-season="winter"
+          title="Winter"
+        >
+          <i class="fas fa-snowflake"></i>
+        </button>
+        <button class="season-button rain" data-season="rain" title="Rain">
+          <i class="fas fa-cloud-rain"></i>
+        </button>
+      </div>
+
+      <!-- Music Control Button -->
+      <button id="music-control" title="Toggle Music">
+        <i class="fas fa-music"></i>
+      </button>
+    </div>
+
+    <div id="page-title">
+      <i class="fa-regular fa-square"></i>Elemental Serenity
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h2 class="modal-title">Settings</h2>
+          <button class="modal-close" id="modal-close">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-tabs">
+          <button class="tab-button active" data-tab="settings">
+            Settings
+          </button>
+          <button class="tab-button" data-tab="about">About</button>
+          <button class="tab-button" data-tab="credits">Credits</button>
+        </div>
+
+        <div class="modal-content">
+          <!-- Settings Tab -->
+          <div class="tab-content active" id="settings-tab">
+            <div class="settings-section">
+              <h3 class="section-title">Audio Settings</h3>
+              <div class="setting-item">
+                <label for="volume-slider">Master Volume</label>
+                <div class="volume-control">
+                  <input
+                    type="range"
+                    id="volume-slider"
+                    min="0"
+                    max="100"
+                    value="50"
+                  />
+                  <span class="volume-value">50%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3 class="section-title">Graphics Settings</h3>
+              <div class="setting-item">
+                <label for="graphics-quality">Quality Preset</label>
+                <div class="custom-select">
+                  <select id="graphics-quality">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                    <option value="ultra">Ultra</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+              </div>
+              <div class="preset-description" id="preset-description">
+                <div class="preset-info">
+                  <span class="preset-label">Affects:</span>
+                  <span class="preset-details" id="preset-details"
+                    >Grass density, particle effects, shadow quality, and pixel
+                    ratio</span
+                  >
+                </div>
+              </div>
+
+              <!-- Custom Graphics Options (hidden by default) -->
+              <div class="custom-graphics-options" id="custom-graphics-options">
+                <div class="custom-option">
+                  <div class="custom-option-header">
+                    <label for="grass-density">Grass Density</label>
+                    <span class="custom-option-value" id="grass-density-value"
+                      >12,500</span
+                    >
+                  </div>
+                  <input
+                    type="range"
+                    id="grass-density"
+                    min="5000"
+                    max="100000"
+                    step="5000"
+                    value="12500"
+                    class="custom-slider"
+                  />
+                  <div class="custom-option-range">
+                    <span>5K</span>
+                    <span>100K</span>
+                  </div>
+                </div>
+
+                <div class="custom-option">
+                  <div class="custom-option-header">
+                    <label for="particle-density">Fire Particles</label>
+                    <span
+                      class="custom-option-value"
+                      id="particle-density-value"
+                      >500</span
+                    >
+                  </div>
+                  <input
+                    type="range"
+                    id="particle-density"
+                    min="200"
+                    max="1200"
+                    step="50"
+                    value="500"
+                    class="custom-slider"
+                  />
+                  <div class="custom-option-range">
+                    <span>200</span>
+                    <span>1200</span>
+                  </div>
+                </div>
+
+                <div class="custom-option">
+                  <div class="custom-option-header">
+                    <label for="shadow-quality">Shadow Quality</label>
+                    <span class="custom-option-value" id="shadow-quality-value"
+                      >Standard</span
+                    >
+                  </div>
+                  <div class="custom-select">
+                    <select id="shadow-quality">
+                      <option value="BasicShadowMap">Basic</option>
+                      <option value="PCFShadowMap" selected>Standard</option>
+                      <option value="PCFSoftShadowMap">Soft</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="custom-option">
+                  <div class="custom-option-header">
+                    <label for="pixel-ratio">Pixel Ratio Cap</label>
+                    <span class="custom-option-value" id="pixel-ratio-value"
+                      >2x</span
+                    >
+                  </div>
+                  <input
+                    type="range"
+                    id="pixel-ratio"
+                    min="1"
+                    max="4"
+                    step="0.5"
+                    value="2"
+                    class="custom-slider"
+                  />
+                  <div class="custom-option-range">
+                    <span>1x</span>
+                    <span>4x</span>
+                  </div>
+                </div>
+
+                <div class="custom-option">
+                  <div class="custom-option-header">
+                    <label for="antialias-toggle">Antialiasing</label>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="antialias-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- About Tab -->
+          <div class="tab-content" id="about-tab">
+            <div class="about-section">
+              <h3 class="section-title">
+                Building <em>Elemental Serenity</em>
+              </h3>
+
+              <div
+                style="
+                  text-align: left;
+                  margin-bottom: 24px;
+                  padding: 16px;
+                  background: rgba(0, 0, 0, 0.02);
+                  border-radius: 8px;
+                  border-left: 3px solid #2563eb;
+                "
+              >
+                <p
+                  style="
+                    margin: 0;
+                    font-size: 0.95rem;
+                    color: rgba(0, 0, 0, 0.7);
+                  "
+                >
+                  <strong
+                    ><i class="fa-brands fa-github" style="font-size: 18px"></i
+                  ></strong>
+                  <a
+                    href="https://github.com/SahilK-027/Elemental-Serenity"
+                    target="_blank"
+                    style="
+                      color: #2563eb;
+                      text-decoration: none;
+                      font-weight: 600;
+                    "
+                  >
+                    https://github.com/SahilK-027/Elemental-Serenity
+                  </a>
+                </p>
+              </div>
+
+              <p class="about-text">
+                What started as a weekend experiment to render a calm, digital
+                glade turned into a months-long exercise in pushing WebGL 2.0
+                and Three.js to their limits. I wanted an environment that felt
+                <em>alive,</em> not just pretty-looking, but responsive,
+                season-aware, and fast enough to run on a mid-range laptop.
+                Below is the short version of that journey: the problems that
+                kept me up at night, the solutions that actually worked, and the
+                few hard lessons I carried into every subsystem.
+              </p>
+
+              <h4 class="tech-title">Inspiration & Creative Direction</h4>
+              <p class="about-text">
+                The original spark for <em>Elemental Serenity</em> came from
+                watching <strong>Bruno Simon's portfolio devlogs</strong> (<a
+                  href="https://youtu.be/MXpML0B2MJc?si=rePA5w2j7CL7Jm9s"
+                  target="_blank"
+                  >https://youtu.be/MXpML0B2MJc?si=rePA5w2j7CL7Jm9s</a
+                >), specifically his breakdowns of how a playful, interactive 3D
+                experience can still be technically rigorous. Seeing how he
+                approached world-building in the browser reframed how I thought
+                about WebGL projects: not as static demos, but as
+                <em>places</em> users can explore. His emphasis on
+                performance-aware creativity pushed me to treat every visual
+                decision as an engineering problem waiting to be solved.
+              </p>
+              <p class="about-text">
+                At the same time, <strong>Jordan Breton's portfolio</strong> (<a
+                  href="https://jordan-breton.com/"
+                  target="_blank"
+                  >https://jordan-breton.com/</a
+                >) heavily influenced the overall mood and restraint of the
+                scene. Where Bruno's work inspired interactivity and technical
+                ambition, Jordan's reminded me of the power of atmosphere,
+                subtle motion, carefully chosen colour palettes, and
+                environments that feel intentional rather than busy. That
+                balance between expressiveness and calm became a guiding
+                principle throughout the project.
+              </p>
+
+              <h4 class="tech-title">The Stack (Why These Tools)</h4>
+              <p class="about-text">
+                I intentionally kept the tech simple but modern:
+              </p>
+              <ul class="feature-list">
+                <li>
+                  <strong>Three.js 0.182</strong> on top of
+                  <strong>WebGL 2.0</strong> for lower-level control.
+                </li>
+                <li>
+                  Custom <strong>GLSL</strong> for the parts where CPU-driven
+                  tricks just wouldn't cut it.
+                </li>
+                <li>
+                  <strong>GSAP 3.14</strong> for smooth orchestration of UI and
+                  seasonal transitions.
+                </li>
+                <li>
+                  <strong>Vite 6.0</strong> + ES6 modules for a snappy dev loop.
+                </li>
+                <li>
+                  <code>vite-plugin-glsl</code> — absolute game changer for
+                  shader hot-reload.
+                </li>
+              </ul>
+              <p class="about-text">
+                These choices gave me quick iteration during development while
+                allowing me to drop into GLSL when performance mattered.
+              </p>
+
+              <h4 class="tech-title">
+                The Grass Problem Was My Biggest Challenge
+              </h4>
+              <p class="about-text">
+                I wanted thousands of grass blades that bend and whisper in the
+                wind. Naively creating tens of thousands of separate meshes was
+                an instant FPS death sentence. The goal became:
+                <em
+                  >how do I keep visual richness with minimal geometry and GPU
+                  overhead?</em
+                >
+              </p>
+
+              <h5 class="subsection-title">What I tried</h5>
+              <ul class="feature-list">
+                <li>
+                  <strong>Instanced rendering</strong>: share a single blade
+                  geometry and provide per-instance transforms. This is
+                  standard, but it alone doesn't solve density control or varied
+                  wind behaviour.
+                </li>
+                <li>
+                  <strong>Billboards</strong>: keep each blade as a
+                  camera-facing quad to dramatically reduce vertex counts.
+                </li>
+              </ul>
+
+              <h5 class="subsection-title">The solution that stuck</h5>
+              <ol class="feature-list">
+                <li>
+                  <strong>Instanced quads + billboard rotation.</strong> Each
+                  grass blade is an instanced quad that rotates in the vertex
+                  shader to face the camera. This alone reduced the vertex count
+                  by orders of magnitude.
+                </li>
+                <li>
+                  <strong>RGB control texture:</strong> a single texture packed
+                  with control channels:
+                  <ul style="margin-left: 20px; margin-top: 8px">
+                    <li>
+                      <strong>R</strong> = path mask (0 = path, 1 = dense grass)
+                    </li>
+                    <li><strong>G</strong> = thickness/scale variation</li>
+                    <li>
+                      <strong>B</strong> = wind intensity map (used to bias
+                      per-instance wind strength)
+                    </li>
+                  </ul>
+                  This texture lets me paint where grass should be sparse
+                  (paths), where it should be thick, and where it should sway
+                  wildly.
+                </li>
+                <li>
+                  <strong>GPU wind physics in GLSL</strong> — per-instance
+                  attributes for base offset + a per-pixel wind strength sampled
+                  from the B channel; everything runs in the vertex shader, so
+                  the CPU only updates when instances are added/removed.
+                </li>
+                <li>
+                  <strong>LOD + quality presets</strong> — for
+                  Low/Medium/High/Ultra I dynamically reduce instance count,
+                  billboard complexity, and particle emissions.
+                </li>
+              </ol>
+
+              <h4 class="tech-title">Seasons — 8 Worlds in One</h4>
+              <p class="about-text">
+                I didn't want a single color toggle. I wanted completely
+                different moods.
+              </p>
+              <ul class="feature-list">
+                <li>
+                  <strong>Design</strong>: 4 seasons × 2 times of day = 8 full
+                  palettes. Every material, grass, rock, water, fire, and smoke
+                  responds.
+                </li>
+                <li>
+                  <strong>Implementation</strong>: a single
+                  <code>SeasonManager</code> singleton broadcasts events and
+                  exposes a small set of uniforms every shader subscribes to
+                  (palette colors, shadow tint, water reflectance, smoke
+                  opacity).
+                </li>
+                <li>
+                  <strong>Performance trick</strong>: shaders receive a compact,
+                  precomputed palette (vec3 arrays + single floats). The heavy
+                  interpolation happens once in JS when switching seasons;
+                  shaders simply lerp between two provided palettes based on
+                  <code>u_seasonBlend</code>.
+                </li>
+              </ul>
+              <p class="about-text">
+                The result is smooth, event-driven transitions with zero frame
+                drops even on large scenes.
+              </p>
+
+              <h4 class="tech-title">Audio — Making Proximity Feel Real</h4>
+              <p class="about-text">
+                Visuals were only half the immersion. Sound had to be reactive,
+                not just background music.
+              </p>
+              <ul class="feature-list">
+                <li><strong>Web Audio API</strong> drives the system.</li>
+                <li>
+                  An <code>AmbientSoundManager</code> controls both
+                  <strong>spatialized sounds</strong> (bird pings, crackling
+                  fire) and <strong>ambience tracks</strong> (wind, brook,
+                  seasonal pads).
+                </li>
+                <li>
+                  <strong>Distance-based falloff</strong> and
+                  <strong>smart mixing</strong> prevent CPU spikes (don't decode
+                  or play inaudible sounds).
+                </li>
+                <li>
+                  Crossfading between tracks and season-aware mixes keeps the
+                  audio design cohesive.
+                </li>
+              </ul>
+              <p class="about-text">
+                This was deceptively tricky: poorly handled crossfades or too
+                many simultaneous sound nodes easily produce audible artefacts
+                or memory leaks, so lifecycle management was critical.
+              </p>
+
+              <h4 class="tech-title">
+                Architecture Decisions That Actually Saved Time
+              </h4>
+              <p class="about-text">
+                A few engineering choices repeatedly paid dividends:
+              </p>
+              <ul class="feature-list">
+                <li>
+                  <strong>Event-driven design</strong>: a lightweight
+                  <code>EventEmitter</code> allowed decoupled components to
+                  react to seasonal or quality changes without washing the scene
+                  with polling logic.
+                </li>
+                <li>
+                  <strong>Singleton SeasonManager & AudioManager</strong>: one
+                  source of truth is easier to reason about than dozens of
+                  semi-consistent objects.
+                </li>
+                <li>
+                  <strong>vite-plugin-glsl</strong>: shader hot-reload made
+                  iterating GLSL feel almost as fast as tweaking CSS in a web
+                  app.
+                </li>
+                <li>
+                  <strong>Quality presets</strong>: Low/Medium/High/Ultra mapped
+                  to concrete parameters (grass density, particle rates, shadow
+                  resolution). Users could persist settings in
+                  <code>localStorage</code>.
+                </li>
+                <li>
+                  <strong>Perf tooling</strong>: embedded three-perf for FPS
+                  tracking while tuning the grass system and particles.
+                </li>
+              </ul>
+
+              <h4 class="tech-title">
+                Memory Management Is the Thing I Learned the Hard Way
+              </h4>
+              <p class="about-text">
+                WebGL resources are explicit. I ran into crashes and VRAM leaks
+                until I audited the cleanup.
+              </p>
+              <ul class="feature-list">
+                <li>
+                  Always call <code>.dispose()</code> on geometries, materials,
+                  and textures when removed.
+                </li>
+                <li>
+                  Remove event listeners and stop audio nodes on scene teardown.
+                </li>
+                <li>
+                  Keep visible object lists small and reuse buffers when
+                  possible (object pools for particles and temporary meshes).
+                </li>
+              </ul>
+              <p class="about-text">
+                After enforcing strict cleanup patterns, stability improved
+                dramatically, especially on devices with constrained memory.
+              </p>
+
+              <h4 class="tech-title">Tradeoffs & Lessons Learned</h4>
+              <ul class="feature-list">
+                <li>
+                  <strong>Complex GLSL > simple CPU logic</strong>: doing wind
+                  and billboarding in the vertex shader saved CPU time but
+                  shifted complexity into shader code. Worth it for performance,
+                  but harder to debug.
+                </li>
+                <li>
+                  <strong>Billboards are cheap, but not always right</strong>:
+                  they work brilliantly for grass and distant foliage but fall
+                  short at close range. I mixed instance billboards with a few
+                  full meshes near the camera.
+                </li>
+                <li>
+                  <strong>Start profiling early</strong>: three-perf and simple
+                  bench scenes let me measure the real effect of changes.
+                  Guessing is expensive.
+                </li>
+                <li>
+                  <strong>One true source of state</strong> (singletons/event
+                  bus) simplifies seasonal transitions, and settings sync across
+                  systems.
+                </li>
+                <li>
+                  <strong>User-configurable quality</strong> matters: letting
+                  users scale down particle counts and shadow resolution kept
+                  the experience accessible.
+                </li>
+              </ul>
+
+              <h4 class="tech-title">Closing Notes</h4>
+              <p class="about-text">
+                This project was equal parts art and systems engineering. The
+                biggest wins came from moving logic onto the GPU (instancing,
+                wind, particles), centralising state (SeasonManager), and being
+                ruthless about cleanup. If you want to poke around the code,
+                focus on the instanced grass shader and the event-driven
+                SeasonManager; they're the heart of the system.
+              </p>
+            </div>
+          </div>
+
+          <!-- Credits Tab -->
+          <div class="tab-content" id="credits-tab">
+            <div class="credits-section">
+              <h3 class="section-title">Credits & Resources</h3>
+
+              <div class="credit-category">
+                <h4 class="credit-title">Models</h4>
+                <div class="credit-item">
+                  <strong>"A simple medieval wooden bridge"</strong> (<a
+                    href="https://skfb.ly/oE6UI"
+                    target="_blank"
+                    >https://skfb.ly/oE6UI</a
+                  >) by FunWithBlender is licensed under Creative Commons
+                  Attribution-NonCommercial (<a
+                    href="http://creativecommons.org/licenses/by-nc/4.0/"
+                    target="_blank"
+                    >http://creativecommons.org/licenses/by-nc/4.0/</a
+                  >).
+                </div>
+                <div class="credit-item">
+                  <strong>"Stylized Tent"</strong> (<a
+                    href="https://skfb.ly/6YSvM"
+                    target="_blank"
+                    >https://skfb.ly/6YSvM</a
+                  >) by csabat3D is licensed under Creative Commons Attribution
+                  (<a
+                    href="http://creativecommons.org/licenses/by/4.0/"
+                    target="_blank"
+                    >http://creativecommons.org/licenses/by/4.0/</a
+                  >).
+                </div>
+                <div class="credit-item">
+                  <strong>Tree trunks and some sound effects:</strong>
+                  <a href="https://bruno-simon.com/" target="_blank"
+                    >https://bruno-simon.com/</a
+                  >
+                </div>
+              </div>
+
+              <div class="credit-category">
+                <h4 class="credit-title">Environment & Textures</h4>
+                <div class="credit-item">
+                  <strong>Environment map:</strong>
+                  "citrus_orchard_road_puresky_4k.hdr" from
+                  <a href="https://polyhaven.com" target="_blank">Polyhaven</a>
+                </div>
+              </div>
+
+              <div class="credit-category">
+                <h4 class="credit-title">Music and Audio</h4>
+                <div class="credit-item">
+                  <strong>BGM:</strong>
+                  <a href="https://suno.com" target="_blank">suno.com</a> - Suno
+                  AI music
+                </div>
+                <div class="credit-item">
+                  <strong>Additional audio resources:</strong>
+                  <a href="https://brunosimon.com/" target="_blank"
+                    >https://brunosimon.com/</a
+                  >
+                </div>
+              </div>
+
+              <div class="credit-category">
+                <h4 class="credit-title">Tools and Resources</h4>
+                <div class="credit-item">
+                  <a href="https://threejs-journey.com/" target="_blank"
+                    >https://threejs-journey.com/</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a href="https://simondev.io/" target="_blank"
+                    >https://simondev.io/</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a href="https://blog.maximeheckel.com/" target="_blank"
+                    >https://blog.maximeheckel.com/</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://youtu.be/M4kMri55rdE?si=sgcrKVit2EzGozD2"
+                    target="_blank"
+                    >https://youtu.be/M4kMri55rdE?si=sgcrKVit2EzGozD2</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://youtu.be/F7_btP0Vhzo?si=fymP2M4GQUD-6aqS"
+                    target="_blank"
+                    >https://youtu.be/F7_btP0Vhzo?si=fymP2M4GQUD-6aqS</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://tympanus.net/codrops/2024/12/02/how-to-code-a-shader-based-reveal-effect-with-react-three-fiber-glsl/"
+                    target="_blank"
+                    >Shader-based reveal effect tutorial - Codrops</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://tympanus.net/codrops/2025/02/04/how-to-make-the-fluffiest-grass-with-three-js/"
+                    target="_blank"
+                    >Fluffy grass with Three.js tutorial - Codrops</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://github.com/AT010303/StylizedTree"
+                    target="_blank"
+                    >https://github.com/AT010303/StylizedTree</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a href="https://www.blender.org/" target="_blank">Blender</a>
+                  - 3D modeling software
+                </div>
+                <div class="credit-item">
+                  <a href="https://www.gimp.org/" target="_blank">GIMP</a> -
+                  Image editing
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://www.rapidtables.com/convert/color/hex-to-rgb.html"
+                    target="_blank"
+                    >Hex to RGB converter</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://matheowis.github.io/HDRI-to-CubeMap/"
+                    target="_blank"
+                    >HDRI to CubeMap converter</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://vercel.com/docs/project-configuration#project/version"
+                    target="_blank"
+                    >Vercel deployment documentation</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a href="https://freestylized.com/" target="_blank"
+                    >https://freestylized.com/</a
+                  >
+                </div>
+                <div class="credit-item">
+                  <a href="https://fontawesome.com/icons" target="_blank"
+                    >Font Awesome</a
+                  >
+                  - Icons
+                </div>
+                <div class="credit-item">
+                  <a
+                    href="https://fonts.google.com/specimen/Schoolbell"
+                    target="_blank"
+                    >Google Fonts - Schoolbell</a
+                  >
+                </div>
+              </div>
+
+              <div class="credit-category">
+                <h4 class="credit-title">JavaScript Libraries</h4>
+                <div class="credit-item">
+                  <strong>Three.js:</strong>
+                  <a href="https://threejs.org/" target="_blank"
+                    >https://threejs.org/</a
+                  >
+                  - 3D graphics library
+                </div>
+                <div class="credit-item">
+                  <strong>GSAP:</strong>
+                  <a href="https://gsap.com/" target="_blank"
+                    >https://gsap.com/</a
+                  >
+                  - Animation library
+                </div>
+                <div class="credit-item">
+                  <strong>lil-gui:</strong>
+                  <a href="https://lil-gui.georgealways.com/" target="_blank"
+                    >https://lil-gui.georgealways.com/</a
+                  >
+                  - Debug interface
+                </div>
+                <div class="credit-item">
+                  <strong>three-perf:</strong>
+                  <a
+                    href="https://github.com/RenaudRohlinger/three-perf"
+                    target="_blank"
+                    >https://github.com/RenaudRohlinger/three-perf</a
+                  >
+                  - Performance monitoring
+                </div>
+                <div class="credit-item">
+                  <strong>Mersenne Twister:</strong>
+                  <a
+                    href="https://github.com/boo1ean/mersenne-twister"
+                    target="_blank"
+                    >https://github.com/boo1ean/mersenne-twister</a
+                  >
+                  - Random number generator
+                </div>
+                <div class="credit-item">
+                  <strong>Vite:</strong>
+                  <a href="https://vitejs.dev/" target="_blank"
+                    >https://vitejs.dev/</a
+                  >
+                  - Build tool
+                </div>
+                <div class="credit-item">
+                  <strong>Sass:</strong>
+                  <a href="https://sass-lang.com/" target="_blank"
+                    >https://sass-lang.com/</a
+                  >
+                  - CSS preprocessor
+                </div>
+              </div>
+
+              <div class="version-info">
+                <p>Version 1.0.0 | Built with 💜 for the web</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loader Screen -->
+    <div id="loader">
+      <div class="loader-title">
+        <i class="fa-regular fa-square"></i>Elemental Serenity
+      </div>
+      <div class="loader-progress">
+        <div class="loader-progress-bar" id="progress-bar"></div>
+      </div>
+      <div class="loader-text" id="loader-text">Loading assets...</div>
+      <div class="explore-buttons" id="explore-buttons">
+        <button
+          class="explore-button explore-button-light"
+          id="explore-with-music"
+        >
+          <i class="fas fa-music"></i>
+          <span>Explore with Music</span>
+        </button>
+        <button
+          class="explore-button explore-button-dark"
+          id="explore-without-music"
+        >
+          <i class="fas fa-volume-mute"></i>
+          <span>Explore in Silence</span>
+        </button>
+      </div>
+    </div>
+
+
+    <script>
+      function buttonVibrate() {
+        if (navigator.haptic) {
+          navigator.haptic([{ intensity: 0.7, sharpness: 0.1 }]);
+        } else if (navigator.vibrate) {
+          navigator.vibrate(10);
+        }
+      }
+
+      class SettingsManager {
+        constructor() {
+          this.hamburgerMenu = document.getElementById('hamburger-menu');
+          this.settingsModal = document.getElementById('settings-modal');
+          this.modalClose = document.getElementById('modal-close');
+          this.tabButtons = document.querySelectorAll('.tab-button');
+          this.tabContents = document.querySelectorAll('.tab-content');
+          this.volumeSlider = document.getElementById('volume-slider');
+          this.volumeValue = document.querySelector('.volume-value');
+          this.graphicsQuality = document.getElementById('graphics-quality');
+
+          const savedSettings = this.loadSettings();
+          this.settings = {
+            volume: savedSettings.volume || 50,
+            graphicsQuality: savedSettings.graphicsQuality || 'medium',
+
+            customGrass: savedSettings.customGrass || 12500,
+            customParticles: savedSettings.customParticles || 500,
+            customShadows: savedSettings.customShadows || 'PCFShadowMap',
+            customPixelRatio: savedSettings.customPixelRatio || 2,
+            customAntialias: savedSettings.customAntialias || false,
+          };
+
+          this.previousVolume = undefined;
+
+          this.graphicsQuality.value = this.settings.graphicsQuality;
+
+          this.volumeSlider.value = this.settings.volume;
+          this.volumeValue.textContent = this.settings.volume + '%';
+
+          this.presetDetails = document.getElementById('preset-details');
+          this.updatePresetDescription(this.settings.graphicsQuality);
+
+          this.initCustomGraphicsControls();
+
+          this.init();
+        }
+
+        init() {
+          const controlPanel = document.getElementById('control-panel');
+          const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+              if (
+                mutation.type === 'attributes' &&
+                mutation.attributeName === 'class'
+              ) {
+                if (controlPanel.classList.contains('show')) {
+                  this.hamburgerMenu.classList.add('show');
+
+                  this.initializeVolumeFromGame();
+
+                  this.setupMusicControlListener();
+                }
+              }
+            });
+          });
+          observer.observe(controlPanel, { attributes: true });
+
+          this.hamburgerMenu.addEventListener('click', () => {
+            buttonVibrate();
+            this.openModal();
+          });
+          this.modalClose.addEventListener('click', () => {
+            buttonVibrate();
+            this.closeModal();
+          });
+          this.settingsModal.addEventListener('click', (e) => {
+            if (e.target === this.settingsModal) this.closeModal();
+          });
+
+          this.tabButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+              buttonVibrate();
+              this.switchTab(button.dataset.tab);
+            });
+          });
+
+          this.volumeSlider.addEventListener('input', (e) => {
+            this.settings.volume = parseInt(e.target.value);
+            this.volumeValue.textContent = this.settings.volume + '%';
+            this.saveSettings();
+            this.updateAudioVolume(this.settings.volume / 100);
+          });
+
+          this.graphicsQuality.addEventListener('change', (e) => {
+            const oldQuality = this.settings.graphicsQuality;
+            this.settings.graphicsQuality = e.target.value;
+            this.saveSettings();
+            this.updatePresetDescription(e.target.value);
+            this.toggleCustomOptions(e.target.value === 'custom');
+
+            if (e.target.value !== 'custom') {
+              this.updateGraphicsQuality(e.target.value);
+
+              const qualitySettings = this.getQualitySettings();
+              const oldSettings =
+                qualitySettings[oldQuality] || this.getCustomSettings();
+              const newSettings = qualitySettings[e.target.value];
+
+              if (
+                oldSettings &&
+                newSettings &&
+                oldSettings.antialias !== newSettings.antialias
+              ) {
+                this.showReloadBanner();
+              }
+            } else {
+              this.applyCustomSettings();
+            }
+          });
+
+          document.addEventListener('keydown', (e) => {
+            if (
+              e.key === 'Escape' &&
+              this.settingsModal.classList.contains('show')
+            ) {
+              this.closeModal();
+            }
+          });
+        }
+
+        setupMusicControlListener() {
+          const musicControlButton = document.getElementById('music-control');
+          if (musicControlButton) {
+            musicControlButton.addEventListener('click', () => {
+              setTimeout(() => {
+                this.syncVolumeWithMusicState();
+              }, 100);
+            });
+          }
+        }
+
+        syncVolumeWithMusicState() {
+          if (window.gameInstance && window.gameInstance.musicControlUI) {
+            const isMusicEnabled =
+              window.gameInstance.musicControlUI.isMusicEnabled;
+
+            if (!isMusicEnabled) {
+              if (this.settings.volume > 0) {
+                this.previousVolume = this.settings.volume;
+              }
+              this.settings.volume = 0;
+              this.volumeSlider.value = 0;
+              this.volumeValue.textContent = '0%';
+            } else {
+              const volumeToRestore =
+                this.previousVolume !== undefined ? this.previousVolume : 50;
+
+              this.settings.volume = volumeToRestore;
+              this.volumeSlider.value = volumeToRestore;
+              this.volumeValue.textContent = volumeToRestore + '%';
+
+              this.updateAudioVolume(volumeToRestore / 100);
+
+              this.saveSettings();
+
+              this.previousVolume = undefined;
+            }
+          }
+        }
+
+        initializeVolumeFromGame() {
+          if (window.gameInstance && window.gameInstance.audioManager) {
+            const currentVolume = window.gameInstance.audioManager.masterVolume;
+            const volumePercent = Math.round(currentVolume * 100);
+
+            if (!window.gameInstance.withMusic) {
+              this.previousVolume = 50;
+              this.settings.volume = 0;
+              this.volumeSlider.value = 0;
+              this.volumeValue.textContent = '0%';
+            } else {
+              const initialVolume = volumePercent > 0 ? volumePercent : 50;
+              this.settings.volume = initialVolume;
+              this.volumeSlider.value = initialVolume;
+              this.volumeValue.textContent = initialVolume + '%';
+            }
+          }
+        }
+
+        initializeAntialiasFromGame() {
+          if (window.gameInstance && window.gameInstance.renderer) {
+            const currentAntialias = window.gameInstance.renderer.antialias;
+            this.settings.antialias = currentAntialias;
+
+            const antialiasToggle = document.getElementById('antialias-toggle');
+            if (antialiasToggle) {
+              antialiasToggle.checked = currentAntialias;
+            }
+          }
+        }
+
+        openModal() {
+          this.settingsModal.classList.add('show');
+          document.body.style.overflow = 'hidden';
+        }
+
+        closeModal() {
+          this.settingsModal.classList.remove('show');
+          document.body.style.overflow = '';
+        }
+
+        switchTab(tabName) {
+          this.tabButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+          });
+
+          this.tabContents.forEach((content) => {
+            content.classList.toggle('active', content.id === tabName + '-tab');
+          });
+        }
+
+        updateAudioVolume(volume) {
+          if (window.gameInstance && window.gameInstance.audioManager) {
+            window.gameInstance.audioManager.setMasterVolume(volume);
+          }
+        }
+
+        updateGraphicsQuality(quality) {
+          const settings = this.getQualitySettings();
+
+          if (window.gameInstance) {
+            const gameSettings = settings[quality];
+
+            if (
+              window.gameInstance.world &&
+              window.gameInstance.world.ground &&
+              window.gameInstance.world.ground.grassManager
+            ) {
+              const grassManager =
+                window.gameInstance.world.ground.grassManager;
+              grassManager.GRASS_PER_TILE = gameSettings.grassPerTile;
+
+              if (typeof grassManager.regenerateGrass === 'function') {
+                grassManager.regenerateGrass();
+              }
+            }
+
+            if (window.gameInstance.world && window.gameInstance.world.fire) {
+              const fire = window.gameInstance.world.fire;
+              if (fire.fireEmitterParams) {
+                fire.originalFireEmissionRate = gameSettings.fireEmissionRate;
+                fire.fireEmitterParams.emissionRate =
+                  gameSettings.fireEmissionRate;
+              }
+              if (fire.smokeEmitterParams) {
+                fire.originalSmokeEmissionRate = gameSettings.smokeEmissionRate;
+                fire.smokeEmitterParams.emissionRate =
+                  gameSettings.smokeEmissionRate;
+              }
+              if (fire.amberEmitterParams) {
+                fire.originalAmberEmissionRate = gameSettings.amberEmissionRate;
+                fire.amberEmitterParams.emissionRate =
+                  gameSettings.amberEmissionRate;
+              }
+            }
+
+            const graphicsChangeEvent = new CustomEvent(
+              'graphicsQualityChanged',
+              {
+                detail: { quality, settings: gameSettings },
+              }
+            );
+            window.dispatchEvent(graphicsChangeEvent);
+          }
+        }
+
+        loadSettings() {
+          try {
+            const saved = localStorage.getItem('gameSettings');
+            const settings = saved ? JSON.parse(saved) : {};
+            return settings;
+          } catch (error) {
+            return {};
+          }
+        }
+
+        saveSettings() {
+          try {
+            localStorage.setItem('gameSettings', JSON.stringify(this.settings));
+          } catch (error) {
+            console.warn('Failed to save settings to localStorage:', error);
+          }
+        }
+
+        getQualitySettings() {
+          return {
+            low: {
+              grassPerTile: 10000,
+              fireEmissionRate: 350,
+              smokeEmissionRate: 35,
+              amberEmissionRate: 20,
+              antialias: false,
+              shadowMapType: 'BasicShadowMap',
+              pixelRatioCap: 2,
+            },
+            medium: {
+              grassPerTile: 12500,
+              fireEmissionRate: 500,
+              smokeEmissionRate: 50,
+              amberEmissionRate: 30,
+              antialias: false,
+              shadowMapType: 'PCFShadowMap',
+              pixelRatioCap: 2,
+            },
+            high: {
+              grassPerTile: 25000,
+              fireEmissionRate: 650,
+              smokeEmissionRate: 65,
+              amberEmissionRate: 40,
+              antialias: true,
+              shadowMapType: 'PCFSoftShadowMap',
+              pixelRatioCap: 2,
+            },
+            ultra: {
+              grassPerTile: 50000,
+              fireEmissionRate: 800,
+              smokeEmissionRate: 80,
+              amberEmissionRate: 50,
+              antialias: true,
+              shadowMapType: 'PCFSoftShadowMap',
+              pixelRatioCap: 3,
+            },
+          };
+        }
+
+        getPresetDescriptions() {
+          return {
+            low: 'Reduced grass density, basic shadows, lower particle effects. \nBest for older devices or battery saving.',
+            medium:
+              'Balanced grass density, standard shadows, moderate particle effects. \nGood for most devices.',
+            high: 'Dense grass, soft shadows, antialiasing enabled, rich particle effects. \nFor capable hardware.',
+            ultra:
+              'Super high grass density, highest quality shadows, full antialiasing, denser particles. \nOnly For high-end devices.',
+            custom:
+              'Fine-tune individual settings below to match your hardware and preferences.',
+          };
+        }
+
+        updatePresetDescription(quality) {
+          if (this.presetDetails) {
+            const descriptions = this.getPresetDescriptions();
+            this.presetDetails.textContent =
+              descriptions[quality] || descriptions.medium;
+          }
+        }
+
+        initCustomGraphicsControls() {
+          this.customOptionsContainer = document.getElementById(
+            'custom-graphics-options'
+          );
+          this.grassSlider = document.getElementById('grass-density');
+          this.grassValue = document.getElementById('grass-density-value');
+          this.particleSlider = document.getElementById('particle-density');
+          this.particleValue = document.getElementById(
+            'particle-density-value'
+          );
+          this.shadowSelect = document.getElementById('shadow-quality');
+          this.shadowValue = document.getElementById('shadow-quality-value');
+          this.pixelRatioSlider = document.getElementById('pixel-ratio');
+          this.pixelRatioValue = document.getElementById('pixel-ratio-value');
+          this.antialiasToggle = document.getElementById('antialias-toggle');
+
+          if (this.grassSlider) {
+            this.grassSlider.value = this.settings.customGrass;
+            this.grassValue.textContent =
+              this.settings.customGrass.toLocaleString();
+          }
+          if (this.particleSlider) {
+            this.particleSlider.value = this.settings.customParticles;
+            this.particleValue.textContent = this.settings.customParticles;
+          }
+          if (this.shadowSelect) {
+            this.shadowSelect.value = this.settings.customShadows;
+            this.updateShadowValueLabel(this.settings.customShadows);
+          }
+          if (this.pixelRatioSlider) {
+            this.pixelRatioSlider.value = this.settings.customPixelRatio;
+            this.pixelRatioValue.textContent =
+              this.settings.customPixelRatio + 'x';
+          }
+          if (this.antialiasToggle) {
+            this.antialiasToggle.checked = this.settings.customAntialias;
+          }
+
+          if (this.settings.graphicsQuality === 'custom') {
+            this.toggleCustomOptions(true);
+          }
+
+          this.grassSlider?.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            this.settings.customGrass = value;
+            this.grassValue.textContent = value.toLocaleString();
+            this.saveSettings();
+            this.applyCustomSettings();
+          });
+
+          this.particleSlider?.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            this.settings.customParticles = value;
+            this.particleValue.textContent = value;
+            this.saveSettings();
+            this.applyCustomSettings();
+          });
+
+          this.shadowSelect?.addEventListener('change', (e) => {
+            this.settings.customShadows = e.target.value;
+            this.updateShadowValueLabel(e.target.value);
+            this.saveSettings();
+            this.applyCustomSettings();
+          });
+
+          this.pixelRatioSlider?.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            this.settings.customPixelRatio = value;
+            this.pixelRatioValue.textContent = value + 'x';
+            this.saveSettings();
+            this.applyCustomSettings();
+          });
+
+          this.antialiasToggle?.addEventListener('change', (e) => {
+            const oldAntialias = this.settings.customAntialias;
+            this.settings.customAntialias = e.target.checked;
+            this.saveSettings();
+            this.applyCustomSettings();
+
+            if (oldAntialias !== e.target.checked) {
+              this.showReloadBanner();
+            }
+          });
+        }
+
+        updateShadowValueLabel(value) {
+          const labels = {
+            BasicShadowMap: 'Basic',
+            PCFShadowMap: 'Standard',
+            PCFSoftShadowMap: 'Soft',
+          };
+          if (this.shadowValue) {
+            this.shadowValue.textContent = labels[value] || 'Standard';
+          }
+        }
+
+        toggleCustomOptions(show) {
+          if (this.customOptionsContainer) {
+            this.customOptionsContainer.classList.toggle('show', show);
+          }
+        }
+
+        getCustomSettings() {
+          return {
+            grassPerTile: this.settings.customGrass,
+            fireEmissionRate: this.settings.customParticles,
+            smokeEmissionRate: Math.round(this.settings.customParticles * 0.1),
+            amberEmissionRate: Math.round(this.settings.customParticles * 0.06),
+            antialias: this.settings.customAntialias,
+            shadowMapType: this.settings.customShadows,
+            pixelRatioCap: this.settings.customPixelRatio,
+          };
+        }
+
+        applyCustomSettings() {
+          if (this.settings.graphicsQuality !== 'custom') return;
+
+          const customSettings = this.getCustomSettings();
+
+          if (window.gameInstance) {
+            if (
+              window.gameInstance.world &&
+              window.gameInstance.world.ground &&
+              window.gameInstance.world.ground.grassManager
+            ) {
+              const grassManager =
+                window.gameInstance.world.ground.grassManager;
+              grassManager.GRASS_PER_TILE = customSettings.grassPerTile;
+              if (typeof grassManager.regenerateGrass === 'function') {
+                grassManager.regenerateGrass();
+              }
+            }
+
+            if (window.gameInstance.world && window.gameInstance.world.fire) {
+              const fire = window.gameInstance.world.fire;
+              if (fire.fireEmitterParams) {
+                fire.originalFireEmissionRate = customSettings.fireEmissionRate;
+                fire.fireEmitterParams.emissionRate =
+                  customSettings.fireEmissionRate;
+              }
+              if (fire.smokeEmitterParams) {
+                fire.originalSmokeEmissionRate =
+                  customSettings.smokeEmissionRate;
+                fire.smokeEmitterParams.emissionRate =
+                  customSettings.smokeEmissionRate;
+              }
+              if (fire.amberEmitterParams) {
+                fire.originalAmberEmissionRate =
+                  customSettings.amberEmissionRate;
+                fire.amberEmitterParams.emissionRate =
+                  customSettings.amberEmissionRate;
+              }
+            }
+
+            const graphicsChangeEvent = new CustomEvent(
+              'graphicsQualityChanged',
+              {
+                detail: { quality: 'custom', settings: customSettings },
+              }
+            );
+            window.dispatchEvent(graphicsChangeEvent);
+          }
+        }
+
+        showReloadBanner() {
+          const existingBanner = document.getElementById('reload-banner');
+          if (existingBanner) {
+            existingBanner.remove();
+          }
+
+          const banner = document.createElement('div');
+          banner.id = 'reload-banner';
+          banner.innerHTML = `
+            <div class="reload-banner-content">
+              <div class="reload-banner-icon">
+                <i class="fas fa-cog"></i>
+              </div>
+              <div class="reload-banner-body">
+                <div class="reload-banner-title">Graphics Settings Changed</div>
+                <p class="reload-banner-text">
+                  Switching between Low/Medium and High/Ultra requires a page reload to apply changes.
+                </p>
+                <div class="reload-banner-actions">
+                  <button id="reload-now-btn" class="reload-btn reload-btn-primary">
+                    <i class="fas fa-redo-alt"></i>
+                    Reload Now
+                  </button>
+                  <button id="dismiss-banner-btn" class="reload-btn reload-btn-secondary">
+                    Later
+                  </button>
+                </div>
+              </div>
+              <button class="reload-banner-close" id="banner-close-btn">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          `;
+
+          if (!document.getElementById('reload-banner-styles')) {
+            const styles = document.createElement('style');
+            styles.id = 'reload-banner-styles';
+            styles.textContent = `
+              #reload-banner {
+                position: fixed;
+                top: 24px;
+                right: 24px;
+                z-index: 10000;
+                animation: bannerSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+              }
+
+              @keyframes bannerSlideIn {
+                from {
+                  transform: translateX(120%) scale(0.9);
+                  opacity: 0;
+                }
+                to {
+                  transform: translateX(0) scale(1);
+                  opacity: 1;
+                }
+              }
+
+              @keyframes bannerSlideOut {
+                from {
+                  transform: translateX(0) scale(1);
+                  opacity: 1;
+                }
+                to {
+                  transform: translateX(120%) scale(0.9);
+                  opacity: 0;
+                }
+              }
+
+              #reload-banner.hiding {
+                animation: bannerSlideOut 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+              }
+
+              .reload-banner-content {
+                display: flex;
+                gap: 16px;
+                background: linear-gradient(145deg, #f5f0ec, #ede8e4);
+                padding: 18px 20px;
+                border-radius: 16px;
+                border: 1px solid rgba(0, 0, 0, 0.06);
+                box-shadow:
+                  0 12px 40px rgba(0, 0, 0, 0.12),
+                  0 4px 12px rgba(0, 0, 0, 0.08),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.8);
+                max-width: 340px;
+                font-family: 'Inter', sans-serif;
+                position: relative;
+              }
+
+              .reload-banner-icon {
+                width: 42px;
+                height: 42px;
+                border-radius: 12px;
+                background: linear-gradient(145deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.04));
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+              }
+
+              .reload-banner-icon i {
+                font-size: 1.1rem;
+                color: rgba(0, 0, 0, 0.7);
+                animation: iconSpin 3s linear infinite;
+              }
+
+              @keyframes iconSpin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+
+              .reload-banner-body {
+                flex: 1;
+                min-width: 0;
+              }
+
+              .reload-banner-title {
+                font-weight: 600;
+                font-size: 0.92rem;
+                color: #000;
+                margin-bottom: 6px;
+                letter-spacing: 0.2px;
+              }
+
+              .reload-banner-text {
+                margin: 0 0 14px 0;
+                font-size: 0.82rem;
+                color: rgba(0, 0, 0, 0.6);
+                line-height: 1.5;
+              }
+
+              .reload-banner-actions {
+                display: flex;
+                gap: 10px;
+              }
+
+              .reload-btn {
+                padding: 9px 16px;
+                border-radius: 10px;
+                font-family: 'Inter', sans-serif;
+                font-size: 0.82rem;
+                font-weight: 500;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                border: 1.5px solid;
+              }
+
+              .reload-btn-primary {
+                background: linear-gradient(145deg, #1a1a1a, #000);
+                border-color: #000;
+                color: #ede8e4;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+              }
+
+              .reload-btn-primary:hover {
+                background: linear-gradient(145deg, #333, #1a1a1a);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+              }
+
+              .reload-btn-primary:active {
+                transform: translateY(0);
+              }
+
+              .reload-btn-primary i {
+                font-size: 0.75rem;
+              }
+
+              .reload-btn-secondary {
+                background: transparent;
+                border-color: rgba(0, 0, 0, 0.15);
+                color: rgba(0, 0, 0, 0.7);
+              }
+
+              .reload-btn-secondary:hover {
+                background: rgba(0, 0, 0, 0.05);
+                border-color: rgba(0, 0, 0, 0.25);
+                color: #000;
+              }
+
+              .reload-banner-close {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                border: none;
+                background: transparent;
+                color: rgba(0, 0, 0, 0.4);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.8rem;
+                transition: all 0.2s ease;
+              }
+
+              .reload-banner-close:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: rgba(0, 0, 0, 0.7);
+              }
+
+              @media (max-width: 480px) {
+                #reload-banner {
+                  top: 12px;
+                  right: 12px;
+                  left: 12px;
+                }
+
+                .reload-banner-content {
+                  max-width: none;
+                  padding: 16px;
+                  gap: 12px;
+                }
+
+                .reload-banner-icon {
+                  width: 36px;
+                  height: 36px;
+                  border-radius: 10px;
+                }
+
+                .reload-banner-icon i {
+                  font-size: 1rem;
+                }
+
+                .reload-banner-title {
+                  font-size: 0.88rem;
+                  padding-right: 24px;
+                }
+
+                .reload-banner-text {
+                  font-size: 0.78rem;
+                }
+
+                .reload-btn {
+                  padding: 8px 14px;
+                  font-size: 0.78rem;
+                }
+              }
+            `;
+            document.head.appendChild(styles);
+          }
+
+          document.body.appendChild(banner);
+
+          const dismissBanner = () => {
+            banner.classList.add('hiding');
+            setTimeout(() => banner.remove(), 300);
+          };
+
+          document
+            .getElementById('reload-now-btn')
+            .addEventListener('click', () => {
+              window.location.reload();
+            });
+
+          document
+            .getElementById('dismiss-banner-btn')
+            .addEventListener('click', dismissBanner);
+
+          document
+            .getElementById('banner-close-btn')
+            .addEventListener('click', dismissBanner);
+
+          setTimeout(() => {
+            if (document.getElementById('reload-banner')) {
+              dismissBanner();
+            }
+          }, 10000);
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        window.settingsManager = new SettingsManager();
+
+        const savedQuality = window.settingsManager.settings.graphicsQuality;
+        const qualitySettings = window.settingsManager.getQualitySettings();
+        const currentSettings = qualitySettings[savedQuality];
+
+        if (currentSettings) {
+          localStorage.setItem(
+            'graphicsAntialias',
+            currentSettings.antialias.toString()
+          );
+          localStorage.setItem(
+            'graphicsShadowMapType',
+            currentSettings.shadowMapType
+          );
+          localStorage.setItem(
+            'graphicsPixelRatioCap',
+            currentSettings.pixelRatioCap.toString()
+          );
+        }
+
+        setTimeout(() => {
+          if (window.settingsManager) {
+            const currentQuality =
+              window.settingsManager.settings.graphicsQuality;
+            window.settingsManager.updateGraphicsQuality(currentQuality);
+          }
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>

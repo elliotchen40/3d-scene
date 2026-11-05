@@ -1,0 +1,954 @@
+// Shared flora helpers and the per-regen resource pool.
+//
+// This module owns the SINGLE flora pool instance. Every per-kind flora
+// builder module imports `pooled` (the get-or-create factory) and
+// `resetFloraPool` from here, so `resetFloraPool()` (called at the top of
+// every generateWorld by way of src/flora.js) resets the same pool the
+// builders use. Pool contract: only resources fully derived from the biome
+// (no per-instance Math.random) are safe to pool, and reset() MUST run every
+// regen — pooled handles are disposed when the previous world's group is
+// torn down, so a stale get() would return disposed objects.
+import * as THREE from "three";
+import { state, disposePoolResources } from "../state.js";
+import { jitterGeo, TRUNK } from "../util.js";
+import { BLOOM_LAYER } from "../postfx.js";
+import { makePool } from "../pool.js";
+import {
+  makeMushroomCapPBRMaterial,
+  makeMushroomUndersideMaterial,
+} from "../pbr.js";
+
+// Cactus needles. Each spine is a real little cone mesh sitting on the
+// capsule's surface, oriented along the outward normal — the shell-fur
+// approach we use for fuzzy creatures renders frosted square columns at
+// sparse densities, which reads as ice crystals rather than thin spikes.
+// One InstancedMesh per cactus part keeps the draw count down (a single
+// 3-arm cactus is at most 3 draws regardless of needle count).
+const NEEDLE_TIP_COLOR = new THREE.Color("#f5ead0");
+const NEEDLE_LENGTH = 0.085;
+const NEEDLE_DENSITY = 95; // needles per local-unit² of capsule surface area
+/**
+ * Builds and parents an InstancedMesh of small cone "needles" scattered over
+ * a capsule's surface (cactus body/arms). Needle count scales with capsule
+ * surface area so thicker/longer capsules read proportionally spikier.
+ * @param {THREE.Object3D} parent - capsule mesh to parent the needle instances to (mesh-local space).
+ * @param {number} radius - capsule radius, local units.
+ * @param {number} length - capsule cylinder run length (between hemispherical caps), local units.
+ * @returns {THREE.InstancedMesh} the needle instance mesh, already added as a child of `parent`.
+ */
+export function addCapsuleNeedles(parent, radius, length) {
+  // One needle geo + material are pooled per regen — disposeGroup runs on
+  // state.world before resetFloraPool(), so the disposed cone gets re-built
+  // by the pool factory on the next world. (A module-scoped singleton would
+  // hand back a stale, already-disposed geometry handle.)
+  const needleGeo = pooled("cactus.needle.geo", () => {
+    const g = new THREE.ConeGeometry(0.0112, NEEDLE_LENGTH, 4);
+    g.translate(0, NEEDLE_LENGTH / 2, 0);
+    return g;
+  });
+  const needleMat = pooled("cactus.needle.mat", () =>
+    new THREE.MeshStandardMaterial({
+      color: NEEDLE_TIP_COLOR,
+      flatShading: true,
+      roughness: 0.55,
+    })
+  );
+  // CapsuleGeometry(radius, length, ...) defines `length` as the cylinder run
+  // between the two hemispherical caps, with the local Y-axis as the spine.
+  // We sample uniformly by surface area across cylinder + caps.
+  const cylArea = 2 * Math.PI * radius * length;
+  const capArea = 4 * Math.PI * radius * radius;
+  const totalArea = cylArea + capArea;
+  const count = Math.max(8, Math.round(totalArea * NEEDLE_DENSITY));
+  const inst = new THREE.InstancedMesh(needleGeo, needleMat, count);
+  inst.castShadow = false; // shadow per-needle would shimmer and is invisible at this scale
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const scl = new THREE.Vector3();
+  const pos = new THREE.Vector3();
+  const norm = new THREE.Vector3();
+  const halfL = length / 2;
+  for (let i = 0; i < count; i++) {
+    if (Math.random() * totalArea < cylArea) {
+      const a = Math.random() * Math.PI * 2;
+      const y = (Math.random() - 0.5) * length;
+      norm.set(Math.cos(a), 0, Math.sin(a));
+      pos.set(norm.x * radius, y, norm.z * radius);
+    } else {
+      // sample a unit hemisphere normal (theta ∈ [0, π/2]) using
+      // u = cos(theta) uniformly distributed → uniform area on the sphere
+      const upper = Math.random() < 0.5;
+      const u = Math.random();
+      const phi = Math.random() * Math.PI * 2;
+      const sinT = Math.sqrt(Math.max(0, 1 - u * u));
+      norm.set(
+        sinT * Math.cos(phi),
+        upper ? u : -u,
+        sinT * Math.sin(phi),
+      );
+      pos.set(norm.x * radius, (upper ? halfL : -halfL) + norm.y * radius, norm.z * radius);
+    }
+    q.setFromUnitVectors(up, norm);
+    // Slight per-needle length jitter — uniform spikes would read mechanical.
+    const sy = 0.65 + Math.random() * 0.7;
+    scl.set(1, sy, 1);
+    m.compose(pos, q, scl);
+    inst.setMatrixAt(i, m);
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  // Parent into the capsule mesh so needles inherit its world transform —
+  // body needles ride the body's y=0.6 offset, arm needles ride the arm's
+  // rotation.z without any extra bookkeeping.
+  parent.add(inst);
+  return inst;
+}
+
+// Per-world resource pool. Each generateWorld() call resets it via
+// resetFloraPool(), so two trees in the same biome share one trunk
+// CylinderGeometry / MeshStandardMaterial, but rebuilding (which disposes
+// the previous world) starts fresh resources. Only colors that are
+// fully derived from the biome (no per-instance Math.random) are pooled —
+// `rock`, `pillar`, and `archstone` keep their per-instance jitter.
+const _floraPool = makePool();
+/**
+ * Resets the shared per-regen flora pool. MUST be called at the top of every
+ * `generateWorld()` (via src/flora.js's re-export) — pooled geometries and
+ * materials are disposed when the previous world's group is torn down, so a
+ * stale cache entry would hand back an already-disposed object.
+ */
+export const resetFloraPool = _floraPool.reset;
+// Indirection so portal previews (src/portal.js) can redirect every builder's
+// pooled() calls to an isolated pool instance instead of this shared one
+// (QA-001: previews used to build with the TARGET biome before the real
+// world's flora loop ran, so shared flora kinds got cached under the wrong
+// biome's palette, then the live world rendered from that contaminated
+// entry). _activeFloraPool defaults to the shared per-regen pool and is only
+// ever swapped by withIsolatedFloraPool below.
+let _activeFloraPool = _floraPool;
+/**
+ * Get-or-create accessor into whichever pool is currently active (the shared
+ * per-regen pool, or an isolated scratch pool while inside
+ * `withIsolatedFloraPool`). Used by every flora builder in this family for
+ * memoizing geometries/materials. Contract: only pass a `factory` producing
+ * resources fully derived from the biome — no per-instance `Math.random` —
+ * since the same cached instance is shared across every placed instance of
+ * that kind this regen.
+ * @param {string} key - unique cache key for this resource.
+ * @param {() => any} factory - builds the resource on first access.
+ * @returns {any} the cached (or newly built) resource.
+ */
+export const pooled = (key, factory) => _activeFloraPool.get(key, factory);
+
+/**
+ * Runs `fn(isolatedPool)` with every `pooled()` call in this module (and
+ * every flora builder that imports it) redirected to a fresh, disposable pool
+ * instead of the shared per-regen one. This is how portal previews
+ * (src/portal.js) render a different biome's flora without leaking that
+ * biome's cached materials into the live world's shared pool (QA-001: without
+ * this, previews built with the TARGET biome before the real world's flora
+ * loop ran, so shared flora kinds got cached under the wrong biome's palette
+ * and the live world then rendered from that contaminated entry).
+ *
+ * `fn` receives the isolated pool so a caller building several one-off
+ * preview objects can check `isolatedPool.values()` before disposing an
+ * individual object's non-pooled resources, without disposing entries other
+ * objects in the same preview build still share. Once `fn` returns, every
+ * resource cached in the isolated pool is disposed — nothing outside the
+ * preview build ever references it (QA-002/QA-026: replaces the old
+ * per-object full-scene retained-set scan).
+ * @param {(isolatedPool: object) => any} fn - callback run against the scratch pool.
+ * @returns {any} whatever `fn` returns.
+ */
+export function withIsolatedFloraPool(fn) {
+  const isolated = makePool();
+  const previous = _activeFloraPool;
+  _activeFloraPool = isolated;
+  try {
+    return fn(isolated);
+  } finally {
+    _activeFloraPool = previous;
+    disposePoolResources(isolated);
+  }
+}
+
+/**
+ * Patches a material's vertex shader (via `onBeforeCompile`) so leaf-plate
+ * geometry (tree/bush foliage built from `buildLeafGeo`) flutters and gusts
+ * in the wind, driven by the shared `state.windUniforms`. Chains onto any
+ * previously-installed `onBeforeCompile` rather than replacing it.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} [strength=0.16] - overall sway multiplier; higher reads as more wind-responsive.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
+export function applyLeafPlateWind(material, strength = 0.16) {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader) => {
+    if (prev) prev(shader);
+    shader.uniforms.uTime = state.windUniforms.uTime;
+    shader.uniforms.uFoliageWind = state.windUniforms.uFoliageWind;
+    shader.uniforms.uLeafPlateWind = { value: strength };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform float uTime;\nuniform float uFoliageWind;\nuniform float uLeafPlateWind;"
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        {
+          #ifdef USE_INSTANCING
+            vec3 leafOrigin = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          #else
+            vec3 leafOrigin = vec3(modelMatrix[3].x, modelMatrix[3].y, modelMatrix[3].z);
+          #endif
+          float phase = leafOrigin.x * 2.1 + leafOrigin.z * 1.6 + leafOrigin.y * 0.7;
+          float tipFlex = smoothstep(-0.04, -0.42, position.y);
+          float gust = sin(uTime * 1.15 + phase) * 0.65 + sin(uTime * 2.05 + phase * 1.37) * 0.35;
+          float flutter = sin(uTime * 3.2 + phase * 1.9 + position.x * 8.0) * 0.45;
+          float wind = uLeafPlateWind * uFoliageWind * tipFlex;
+          transformed.x += (gust * 0.090 + flutter * 0.026) * wind;
+          transformed.y += flutter * 0.018 * wind;
+          transformed.z += (gust * 0.125 + flutter * 0.038) * wind;
+        }`
+      );
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
+/**
+ * Patches a material's shaders (via `onBeforeCompile`) to paint a stylized
+ * per-leaf shading gradient (tip highlight, base/side/vein shade, and a
+ * procedural rib mask) onto leaf-plate geometry, in lieu of a texture map.
+ * Chains onto any previously-installed `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {object} [opts]
+ * @param {number} [opts.tipLift=0.10] - brightening applied toward the leaf tip.
+ * @param {number} [opts.baseShade=0.10] - darkening applied toward the leaf base.
+ * @param {number} [opts.veinShade=0.08] - darkening along the center vein.
+ * @param {number} [opts.sideShade=0.10] - darkening toward the leaf edges.
+ * @param {number} [opts.ribShade=0.11] - darkening along the procedural rib pattern.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
+export function applyLeafPlateGradient(
+  material,
+  { tipLift = 0.10, baseShade = 0.10, veinShade = 0.08, sideShade = 0.10, ribShade = 0.11 } = {}
+) {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader) => {
+    if (prev) prev(shader);
+    shader.uniforms.uLeafTipLift = { value: tipLift };
+    shader.uniforms.uLeafBaseShade = { value: baseShade };
+    shader.uniforms.uLeafVeinShade = { value: veinShade };
+    shader.uniforms.uLeafSideShade = { value: sideShade };
+    shader.uniforms.uLeafRibShade = { value: ribShade };
+    shader.uniforms.uLeafRibHighlight = { value: ribShade * 0.80 };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        varying float vLeafPlateGradient;
+        varying float vLeafPlateVein;
+        varying float vLeafPlateSide;
+        varying vec2 vLeafPlateUv;`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vLeafPlateGradient = smoothstep(-0.42, 0.0, position.y);
+        vLeafPlateVein = 1.0 - smoothstep(0.0, 0.035, abs(position.x));
+        vLeafPlateSide = smoothstep(-0.16, 0.16, position.x);
+        vLeafPlateUv = vec2(clamp(position.x / 0.34 + 0.5, 0.0, 1.0), clamp(-position.y / 0.42, 0.0, 1.0));`
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        uniform float uLeafTipLift;
+        uniform float uLeafBaseShade;
+        uniform float uLeafVeinShade;
+        uniform float uLeafSideShade;
+        uniform float uLeafRibShade;
+        uniform float uLeafRibHighlight;
+        varying float vLeafPlateGradient;
+        varying float vLeafPlateVein;
+        varying float vLeafPlateSide;
+        varying vec2 vLeafPlateUv;
+        float leafRibMask(vec2 leafUv) {
+          float side = abs(leafUv.x - 0.5) * 2.0;
+          float body = smoothstep(0.04, 0.16, leafUv.y) * (1.0 - smoothstep(0.88, 1.0, leafUv.y));
+          float ribs = 1.0 - smoothstep(0.0, 0.14, abs(fract(leafUv.y * 7.0 + side * 1.10) - 0.5));
+          return ribs * smoothstep(0.10, 0.30, side) * (1.0 - smoothstep(0.82, 1.0, side)) * body;
+        }`
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        float leafRibs = leafRibMask(vLeafPlateUv);
+        diffuseColor.rgb *= 1.0 - uLeafBaseShade * (1.0 - vLeafPlateGradient);
+        diffuseColor.rgb += diffuseColor.rgb * uLeafTipLift * vLeafPlateGradient;
+        diffuseColor.rgb *= 1.0 - uLeafSideShade * (1.0 - vLeafPlateSide);
+        diffuseColor.rgb += diffuseColor.rgb * uLeafSideShade * 0.45 * vLeafPlateSide;
+        diffuseColor.rgb *= 1.0 - uLeafVeinShade * 1.45 * vLeafPlateVein;
+        diffuseColor.rgb *= 1.0 - uLeafRibShade * leafRibs;
+        diffuseColor.rgb += diffuseColor.rgb * uLeafRibHighlight * (leafRibs + vLeafPlateVein * 0.35) * vLeafPlateSide;`
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        `#include <roughnessmap_fragment>
+        roughnessFactor = clamp(roughnessFactor - uLeafRibHighlight * leafRibMask(vLeafPlateUv) * 0.26, 0.16, 1.0);`
+      );
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
+/**
+ * Patches a material's vertex shader (via `onBeforeCompile`) to drift
+ * vertices in a slow multi-axis sine wander, driven by `state.windUniforms`
+ * — used for floating spore particles. Chains onto any previously-installed
+ * `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} [strength=0.035] - drift amplitude in world units.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
+export function applySporeDrift(material, strength = 0.035) {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader) => {
+    if (prev) prev(shader);
+    shader.uniforms.uTime = state.windUniforms.uTime;
+    shader.uniforms.uSporeDrift = { value: strength };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform float uTime;\nuniform float uSporeDrift;"
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        {
+          vec4 wp = modelMatrix * vec4(transformed, 1.0);
+          float phase = wp.x * 0.72 + wp.z * 0.57;
+          transformed.x += sin(uTime * 1.1 + phase) * uSporeDrift;
+          transformed.y += sin(uTime * 1.6 + phase * 1.3) * uSporeDrift * 0.85;
+          transformed.z += cos(uTime * 1.0 + phase * 0.8) * uSporeDrift;
+        }`
+      );
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
+/**
+ * Patches a material's shaders (via `onBeforeCompile`) to paint animated
+ * swirling cloud-wisp bands across a balloon-shaped surface (the volcanic
+ * biome's `balloontree` puff), using local-position-based spiral noise.
+ * Chains onto any previously-installed `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} [strength=0.34] - overall wisp visibility/contrast multiplier.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
+export function applyBalloonPuffWisps(material, strength = 0.34) {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader) => {
+    if (prev) prev(shader);
+    shader.uniforms.uBalloonWispTime = state.windUniforms.uTime;
+    shader.uniforms.uBalloonWispStrength = { value: strength };
+    shader.uniforms.uBalloonWispContrast = { value: 0.62 };
+    shader.uniforms.uBalloonWispShadow = { value: 0.44 };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vBalloonLocalPos;`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vBalloonLocalPos = position;`
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        uniform float uBalloonWispTime;
+        uniform float uBalloonWispStrength;
+        uniform float uBalloonWispContrast;
+        uniform float uBalloonWispShadow;
+        varying vec3 vBalloonLocalPos;
+        float balloonWispSoftNoise(vec3 p) {
+          return sin(p.x * 2.1 + p.y * 1.4 - p.z * 1.7) * 0.5 + 0.5;
+        }`
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        {
+          float angle = atan(vBalloonLocalPos.z, vBalloonLocalPos.x);
+          float radius = length(vBalloonLocalPos.xz);
+          float shell = smoothstep(0.015, 0.22, radius) * (1.0 - smoothstep(0.58, 0.76, radius));
+          float drift = uBalloonWispTime * 0.46;
+          float softWarp = (balloonWispSoftNoise(vBalloonLocalPos * 4.2 + vec3(drift, -drift * 0.35, drift * 0.5)) - 0.5) * 0.34;
+          float spiralPhase = atan(vBalloonLocalPos.z, vBalloonLocalPos.x) * 2.8
+            + vBalloonLocalPos.y * 9.5
+            - radius * 3.8
+            + drift
+            + softWarp;
+          float spiralRibbon = 1.0 - smoothstep(0.16, 0.54, abs(sin(spiralPhase)));
+          float secondaryPhase = spiralPhase + 2.35 + radius * 2.2;
+          float secondaryRibbon = 1.0 - smoothstep(0.12, 0.48, abs(sin(secondaryPhase)));
+          float brightWisps = (spiralRibbon * 0.86 + secondaryRibbon * 0.38) * shell * uBalloonWispStrength;
+          float shadowWisps = (1.0 - smoothstep(0.20, 0.64, abs(sin(spiralPhase + 1.30))))
+            * shell * uBalloonWispStrength;
+          vec3 wispColor = vec3(1.0, 0.985, 0.94);
+          vec3 shadowColor = vec3(0.55, 0.55, 0.62);
+          diffuseColor.rgb = mix(diffuseColor.rgb, shadowColor, shadowWisps * uBalloonWispShadow);
+          diffuseColor.rgb = mix(diffuseColor.rgb, wispColor, brightWisps * uBalloonWispContrast);
+        }`
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        `#include <roughnessmap_fragment>
+        roughnessFactor = clamp(roughnessFactor - uBalloonWispStrength * 0.08, 0.18, 1.0);`
+      );
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
+/**
+ * Patches a material's vertex shader (via `onBeforeCompile`) so the
+ * dandylion's spherical seed head sways as a rigid whole (quadratic in its
+ * local Y so the head — sitting atop the stem — moves more than the stem
+ * base), driven by `state.windUniforms`. Chains onto any previously-installed
+ * `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} strength - overall sway multiplier.
+ * @param {number} headY - local Y of the head center (stem height), used as the quadratic wind-amplitude anchor.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
+export function applyDandylionHeadWind(material, strength, headY) {
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader) => {
+    if (prev) prev(shader);
+    shader.uniforms.uTime = state.windUniforms.uTime;
+    shader.uniforms.uWindStrength = { value: strength };
+    shader.uniforms.uFoliageWind = state.windUniforms.uFoliageWind;
+    shader.uniforms.uDandylionHeadY = { value: headY };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform float uTime;\nuniform float uWindStrength;\nuniform float uFoliageWind;\nuniform float uDandylionHeadY;"
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        {
+          float windY = uDandylionHeadY;
+          float windAmp = windY * windY * uWindStrength * uFoliageWind;
+          vec4 wp = modelMatrix * vec4(vec3(0.0, uDandylionHeadY, 0.0), 1.0);
+          float w1 = sin(uTime * 1.4 + wp.x * 0.30 + wp.z * 0.40);
+          float w2 = sin(uTime * 0.9 + wp.x * 0.15 - wp.z * 0.25);
+          vec2 windWorld = vec2(w1 * windAmp * 0.06, w2 * windAmp * 0.05);
+          transformed.xz += windWorld;
+        }`
+      );
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
+/**
+ * Builds a static InstancedMesh from a shared geometry/material and a list of
+ * precomputed per-instance transforms (used for leaf-plate batches on trees
+ * and bushes). Returns `null` for an empty matrix list rather than an
+ * instanced mesh with zero instances.
+ * @param {THREE.BufferGeometry} geometry
+ * @param {THREE.Material} material
+ * @param {THREE.Matrix4[]} matrices - one transform per instance.
+ * @param {boolean} [castShadow=true]
+ * @returns {THREE.InstancedMesh|null}
+ */
+export function makeInstancedLeafBatch(geometry, material, matrices, castShadow = true) {
+  if (!matrices.length) return null;
+  const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+  for (let i = 0; i < matrices.length; i++) {
+    mesh.setMatrixAt(i, matrices[i]);
+  }
+  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.castShadow = castShadow;
+  mesh.computeBoundingSphere();
+  return mesh;
+}
+
+/**
+ * Whether small flora meshes (leaves, needles, stems) on this biome should
+ * cast shadows. Defaults to true; a biome opts out via
+ * `shadowLod.microFloraShadows === false` on lower shadow-detail tiers.
+ * @param {object} biome
+ * @returns {boolean}
+ */
+export function shouldCastMicroFloraShadow(biome) {
+  return biome.shadowLod?.microFloraShadows !== false;
+}
+
+/**
+ * Whether the leafballtree should render a single low-poly sphere shadow
+ * proxy for its canopy instead of per-leaf shadows. Opt-in via
+ * `biome.shadowLod.leafballCanopyProxy === true`.
+ * @param {object} biome
+ * @returns {boolean}
+ */
+export function shouldUseLeafballCanopyShadowProxy(biome) {
+  return biome.shadowLod?.leafballCanopyProxy === true;
+}
+
+/**
+ * Builds an invisible (colorWrite/depthWrite/depthTest disabled) sphere mesh
+ * that only casts a shadow — a cheap stand-in for a leafballtree's canopy
+ * when `shouldUseLeafballCanopyShadowProxy` is true, replacing per-leaf
+ * shadow casting with one shadow-map draw.
+ * @param {THREE.Vector3} canopyCenter - mesh-local position of the canopy center.
+ * @param {THREE.Vector3} canopyRadius - per-axis scale applied to the unit sphere.
+ * @returns {THREE.Mesh} the proxy mesh, tagged `userData.inspect = { category: "flora", variant: "leafballtree" }`.
+ */
+export function makeLeafballCanopyShadowProxy(canopyCenter, canopyRadius) {
+  const geo = pooled("leafballtree.canopy.shadowProxy.geo", () => new THREE.SphereGeometry(1, 16, 10));
+  const mat = pooled(
+    "leafballtree.canopy.shadowProxy.mat",
+    () =>
+      new THREE.MeshBasicMaterial({
+        colorWrite: false,
+        depthWrite: false,
+        depthTest: false,
+      })
+  );
+  const proxy = new THREE.Mesh(geo, mat);
+  proxy.position.copy(canopyCenter);
+  proxy.scale.copy(canopyRadius);
+  proxy.castShadow = true;
+  proxy.receiveShadow = false;
+  proxy.userData.inspect = { category: "flora", variant: "leafballtree" };
+  return proxy;
+}
+
+/**
+ * Derives the leafballtree's trunk/leaf/outline colors from the biome's
+ * ground palette (with an optional per-biome `leafballTreePalette` override
+ * for any of the leaf slots or trunk color).
+ * @param {object} biome
+ * @returns {{trunk: THREE.Color, outline: THREE.Color, leaves: THREE.Color[]}}
+ */
+export function getLeafballTreePalette(biome) {
+  const override = biome.leafballTreePalette || {};
+  const fallbackLeaves = [
+    new THREE.Color(biome.ground[0]).lerp(new THREE.Color("#1d4f29"), 0.30),
+    new THREE.Color(biome.ground[1]).lerp(new THREE.Color("#69b85b"), 0.34),
+    new THREE.Color(biome.ground[1]).lerp(new THREE.Color("#64ad58"), 0.18),
+  ];
+  const leaves = fallbackLeaves.map((color, index) => override.leaves?.[index] || color);
+  const trunk = override.trunk || new THREE.Color(TRUNK).lerp(new THREE.Color("#c38b45"), 0.52);
+
+  return {
+    trunk,
+    outline: getLeafballOutlineColor(leaves, trunk),
+    leaves,
+  };
+}
+
+/**
+ * Derives the leafballtree's outline color as a darkened blend of its
+ * lightest leaf color and its trunk color.
+ * @param {THREE.Color[]} leaves
+ * @param {THREE.Color} trunk
+ * @returns {THREE.Color}
+ */
+export function getLeafballOutlineColor(leaves, trunk) {
+  return new THREE.Color(leaves[0])
+    .lerp(new THREE.Color(trunk), 0.34)
+    .offsetHSL(0.0, -0.05, -0.18);
+}
+
+/**
+ * Derives the `flyer_nest` structure's base/light colors from the biome's
+ * ground/cliff/accent palette, with extra warmth blended in on `cloudlike`
+ * biomes.
+ * @param {object} biome
+ * @returns {{base: THREE.Color, light: THREE.Color}}
+ */
+export function getFlyerNestPalette(biome) {
+  const ground0 = new THREE.Color(biome.ground[0]);
+  const ground1 = new THREE.Color(biome.ground[1] ?? biome.ground[0]);
+  const ground2 = new THREE.Color(biome.ground[2] ?? biome.ground[1] ?? biome.ground[0]);
+  const cliff = new THREE.Color(biome.cliff);
+  const accent = new THREE.Color(biome.accent ?? biome.sun ?? biome.cliff);
+  const base = cliff.clone().lerp(ground0, 0.48).lerp(ground1, biome.cloudlike ? 0.28 : 0.12);
+  const light = ground2.clone().lerp(accent, biome.cloudlike ? 0.40 : 0.20).lerp(base, 0.38);
+  return { base, light };
+}
+
+/**
+ * Derives the dandylion's stem/leaf colors from the biome's ground/cliff
+ * palette.
+ * @param {object} biome
+ * @returns {{stem: THREE.Color, leaf: THREE.Color}}
+ */
+export function getDandylionFloraPalette(biome) {
+  const ground0 = new THREE.Color(biome.ground[0]);
+  const ground1 = new THREE.Color(biome.ground[1] ?? biome.ground[0]);
+  const ground2 = new THREE.Color(biome.ground[2] ?? biome.ground[1] ?? biome.ground[0]);
+  const cliff = new THREE.Color(biome.cliff);
+  return {
+    stem: ground0.clone().lerp(cliff, 0.32).offsetHSL(0, -0.04, -0.02),
+    leaf: ground1.clone().lerp(ground2, 0.38).offsetHSL(0, 0.04, 0.00),
+  };
+}
+
+/**
+ * Builds a custom mushroom-stem BufferGeometry: a tapered, gently curved
+ * cylinder with a bulbous base and a subtle neck tuck, plus vertical ridges
+ * and surface ripple detail. Local Y=0 is the stem base; Y=`height` is the
+ * top (where the cap sits).
+ * @param {number} height - stem height, local units.
+ * @param {object} [opts]
+ * @param {number} opts.baseRadius - radius at the stem base.
+ * @param {number} opts.topRadius - radius at the stem top.
+ * @param {number} [opts.bulbRadius=baseRadius*0.35] - extra radius blended in near the base for the bulb.
+ * @param {number} [opts.curve=height*0.028] - lateral S-curve bend amplitude.
+ * @param {number} [opts.radialSegments=7]
+ * @param {number} [opts.heightSegments=9]
+ * @returns {THREE.BufferGeometry}
+ */
+export function makeMushroomStemGeometry(
+  height,
+  { baseRadius, topRadius, bulbRadius = baseRadius * 0.35, curve = height * 0.028, radialSegments = 7, heightSegments = 9 } = {}
+) {
+  const positions = [];
+  const indices = [];
+  for (let iy = 0; iy <= heightSegments; iy++) {
+    const t = iy / heightSegments;
+    const y = t * height;
+    const sCurve = Math.sin(t * Math.PI * 2) * Math.sin(t * Math.PI);
+    const bulbBase = Math.pow(1 - t, 3.2) * bulbRadius;
+    const neckTuck = Math.sin(t * Math.PI) * baseRadius * 0.10;
+    const radius = baseRadius + (topRadius - baseRadius) * t + bulbBase - neckTuck;
+    const cx = sCurve * curve;
+    const cz = Math.sin(t * Math.PI * 2 + Math.PI * 0.5) * Math.sin(t * Math.PI) * curve * 0.22;
+    for (let ix = 0; ix < radialSegments; ix++) {
+      const a = (ix / radialSegments) * Math.PI * 2;
+      const verticalRidge = Math.sin(a * 5 + t * Math.PI * 1.5) * baseRadius * 0.035;
+      const surfaceRipple = Math.sin(t * Math.PI * 8 + a * 2) * baseRadius * 0.018;
+      const r = radius + verticalRidge + surfaceRipple;
+      positions.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r);
+    }
+  }
+
+  for (let iy = 0; iy < heightSegments; iy++) {
+    const row = iy * radialSegments;
+    const next = (iy + 1) * radialSegments;
+    for (let ix = 0; ix < radialSegments; ix++) {
+      const a = row + ix;
+      const b = row + ((ix + 1) % radialSegments);
+      const c = next + ix;
+      const d = next + ((ix + 1) % radialSegments);
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const bottomCenter = positions.length / 3;
+  positions.push(0, 0, 0);
+  const topCenter = positions.length / 3;
+  positions.push(0, height, 0);
+  const topRow = heightSegments * radialSegments;
+  for (let ix = 0; ix < radialSegments; ix++) {
+    indices.push(bottomCenter, (ix + 1) % radialSegments, ix);
+    indices.push(topCenter, topRow + ix, topRow + ((ix + 1) % radialSegments));
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Builds a downward-facing disc geometry that closes a mushroom cap's
+ * hemisphere from below, so looking up under the cap (e.g. first-person
+ * stroll) doesn't see through into empty space. Normals point down
+ * (`geo.userData.normalsFaceDown = true`); a small rim overlap/bevel drop
+ * avoids z-fighting with the cap mesh's own rim.
+ * @param {number} radiusX - cap radius along local X, local units.
+ * @param {number} radiusZ - cap radius along local Z, local units.
+ * @param {number} y - local Y of the cap's rim (where the underside attaches).
+ * @param {number} segments - radial segment count, should match the cap geometry.
+ * @param {object} [opts]
+ * @param {number} [opts.rimOverlap=1.004] - outward radius scale so the rim slightly overlaps the cap.
+ * @param {number} [opts.yOffset=-0.001] - small downward offset from `y` to avoid z-fighting.
+ * @param {number} [opts.innerRimInset=0.965] - inward radius scale for the inner (bevel) ring.
+ * @param {number} [opts.bevelDrop=0.008] - how far below the rim the inner disc sits.
+ * @returns {THREE.BufferGeometry}
+ */
+export function makeMushroomUndersideGeometry(
+  radiusX,
+  radiusZ,
+  y,
+  segments,
+  { rimOverlap = 1.004, yOffset = -0.001, innerRimInset = 0.965, bevelDrop = 0.008 } = {}
+) {
+  const rimY = y + yOffset;
+  const undersideY = rimY - bevelDrop;
+  const rimRadiusX = radiusX * rimOverlap;
+  const rimRadiusZ = radiusZ * rimOverlap;
+  const innerRadiusX = radiusX * innerRimInset;
+  const innerRadiusZ = radiusZ * innerRimInset;
+  const positions = [0, undersideY, 0];
+  const normals = [0, -1, 0];
+  const uvs = [0.5, 0.5];
+  const indices = [];
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const x = Math.cos(a) * innerRadiusX;
+    const z = Math.sin(a) * innerRadiusZ;
+    positions.push(x, undersideY, z);
+    normals.push(0, -1, 0);
+    uvs.push(0.5 + x / (rimRadiusX * 2), 0.5 + z / (rimRadiusZ * 2));
+  }
+  const outerStart = positions.length / 3;
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const x = Math.cos(a) * rimRadiusX;
+    const z = Math.sin(a) * rimRadiusZ;
+    positions.push(x, rimY, z);
+    normals.push(0, -1, 0);
+    uvs.push(0.5 + x / (rimRadiusX * 2), 0.5 + z / (rimRadiusZ * 2));
+  }
+  for (let i = 0; i < segments; i++) {
+    indices.push(0, i + 1, ((i + 1) % segments) + 1);
+    indices.push(i + 1, outerStart + i, ((i + 1) % segments) + 1);
+    indices.push(((i + 1) % segments) + 1, outerStart + i, outerStart + ((i + 1) % segments));
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.userData.normalsFaceDown = true;
+  return geo;
+}
+
+/**
+ * Sets `material.shadowSide = THREE.DoubleSide` so a mushroom cap mesh casts
+ * a shadow from its underside too (the cap geometry is a one-sided
+ * hemisphere; without this its self-shadow on the underside disc is wrong).
+ * @param {THREE.Material} material - mutated in place.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
+export function enableMushroomCapShadowUnderside(material) {
+  material.shadowSide = THREE.DoubleSide;
+  return material;
+}
+
+/**
+ * Adds a cluster of small "baby" mushrooms (and, if the biome opts in, a
+ * scattering of glowing spore particles) as children of `group`, scattered
+ * around the origin at mesh-local ground level. No-op if
+ * `biome.groveDetails?.mushroomFamilies` is falsy; the spore pass is
+ * additionally gated on `biome.groveDetails?.sporeGlow`.
+ * @param {THREE.Group} group - parent to add the baby mushrooms/spores to (mesh-local space, origin-centered).
+ * @param {object} biome
+ * @param {object} [opts]
+ * @param {number} [opts.radius=0.44] - scatter radius for baby mushrooms, local units.
+ * @param {number} [opts.count=3] - baseline baby mushroom count (0-2 more added randomly).
+ * @param {number} [opts.capY=0.35] - reference height used to place spore particles proportionally above ground.
+ * @returns {void}
+ */
+export function addGroveMushroomFamily(group, biome, { radius = 0.44, count = 3, capY = 0.35 } = {}) {
+  if (!biome.groveDetails?.mushroomFamilies) return;
+  const stemGeo = pooled("grove.babyMushroom.stem.geo", () =>
+    new THREE.CylinderGeometry(0.025, 0.04, 0.18, 5).translate(0, 0.09, 0)
+  );
+  const capGeo = pooled("grove.babyMushroom.cap.geo", () =>
+    new THREE.SphereGeometry(0.085, 7, 5, 0, Math.PI * 2, 0, Math.PI / 2)
+      .scale(1.25, 0.72, 1.25)
+      .translate(0, 0.18, 0)
+  );
+  const stemMat = pooled("grove.babyMushroom.stem.mat.smooth", () =>
+    new THREE.MeshStandardMaterial({ color: "#f4e6c9", roughness: 0.95 })
+  );
+  const undersideGeo = pooled("grove.babyMushroom.underside.geo", () =>
+    makeMushroomUndersideGeometry(0.085 * 1.25, 0.085 * 1.25, 0.18, 10)
+  );
+  const undersideMat = pooled("grove.babyMushroom.underside.mat.lit", () => makeMushroomUndersideMaterial());
+  const baseCapColor = new THREE.Color(biome.accent).lerp(new THREE.Color("#b85f2a"), 0.18);
+  const babies = count + Math.floor(Math.random() * 3);
+  for (let i = 0; i < babies; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = radius * (0.35 + Math.random() * 0.65);
+    const scale = 0.72 + Math.random() * 0.62;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    const stem = new THREE.Mesh(stemGeo, stemMat);
+    stem.position.set(x, 0, z);
+    stem.scale.setScalar(scale);
+    stem.userData.surfaceLift = 0;
+    stem.castShadow = true;
+    group.add(stem);
+    const babyCapColor = baseCapColor.clone().offsetHSL(
+      (Math.random() - 0.5) * 0.06,
+      (Math.random() - 0.5) * 0.15,
+      (Math.random() - 0.5) * 0.10
+    );
+    const cap = new THREE.Mesh(capGeo, enableMushroomCapShadowUnderside(makeMushroomCapPBRMaterial({
+      color: babyCapColor,
+      roughness: 0.68,
+    })));
+    cap.position.set(x, 0, z);
+    cap.scale.setScalar(scale);
+    cap.rotation.y = Math.random() * Math.PI * 2;
+    cap.userData.surfaceLift = 0;
+    cap.castShadow = true;
+    group.add(cap);
+    const underside = new THREE.Mesh(undersideGeo, undersideMat);
+    underside.position.set(x, 0, z);
+    underside.scale.setScalar(scale);
+    underside.rotation.y = cap.rotation.y;
+    underside.userData.surfaceLift = 0;
+    group.add(underside);
+  }
+
+  if (!biome.groveDetails?.sporeGlow) return;
+  const sporeGeo = pooled("grove.spore.geo", () => new THREE.SphereGeometry(0.0195, 6, 5));
+  const sporeMat = pooled("grove.spore.mat", () => {
+    const color = new THREE.Color("#ffc36b");
+    return applySporeDrift(new THREE.MeshStandardMaterial({
+      color,
+      emissive: color.clone().multiplyScalar(1.35),
+      emissiveIntensity: 1.05,
+      flatShading: true,
+      roughness: 0.45,
+    }));
+  });
+  const spores = 1 + Math.floor(Math.random() * 2); // 1–2 (was 3–6)
+  for (let i = 0; i < spores; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = radius * (0.18 + Math.random() * 0.62);
+    const spore = new THREE.Mesh(sporeGeo, sporeMat);
+    spore.position.set(Math.cos(a) * r, capY * (0.55 + Math.random() * 0.75), Math.sin(a) * r);
+    spore.layers.enable(BLOOM_LAYER);
+    group.add(spore);
+  }
+}
+
+/**
+ * Adds a `THREE.LineSegments` overlay of random weathered scratch marks
+ * across a pillar/drum mesh's faces, in a darkened variant of `baseColor`.
+ * Purely decorative; adds the line mesh as a child of `drum`.
+ * @param {THREE.Object3D} drum - pillar mesh to add the marks to (mesh-local space).
+ * @param {number} topRadius - pillar radius at the top, local units.
+ * @param {number} bottomRadius - pillar radius at the bottom, local units.
+ * @param {number} height - pillar height, local units.
+ * @param {THREE.Color} baseColor - pillar's base color; marks are a darkened offset of this.
+ * @returns {void}
+ */
+export function addPillarSurfaceMarks(drum, topRadius, bottomRadius, height, baseColor) {
+  const points = [];
+  const markCount = 9 + Math.floor(Math.random() * 5);
+  const scratchColor = baseColor.clone().offsetHSL(0, -0.05, -0.18);
+  const sideCount = 7;
+  const facePad = 0.08;
+
+  const pointOnFace = (face, sideT, y) => {
+    const yT = y / height + 0.5;
+    const radius = bottomRadius + (topRadius - bottomRadius) * yT;
+    const a0 = (face / sideCount) * Math.PI * 2;
+    const a1 = ((face + 1) / sideCount) * Math.PI * 2;
+    const p0 = new THREE.Vector3(Math.cos(a0) * radius, y, Math.sin(a0) * radius);
+    const p1 = new THREE.Vector3(Math.cos(a1) * radius, y, Math.sin(a1) * radius);
+    const mid = (a0 + a1) * 0.5;
+    const normal = new THREE.Vector3(Math.cos(mid), 0, Math.sin(mid));
+    return p0.lerp(p1, sideT).addScaledVector(normal, 0.0015);
+  };
+
+  for (let i = 0; i < markCount; i++) {
+    const vertical = Math.random() < 0.58;
+    const face = Math.floor(Math.random() * sideCount);
+    let sideT = facePad + Math.random() * (1 - facePad * 2);
+    let y = (Math.random() - 0.5) * height * 0.72;
+    const steps = vertical ? 3 + Math.floor(Math.random() * 3) : 2 + Math.floor(Math.random() * 3);
+    const yStep = height * (vertical ? 0.12 : 0.07);
+    const sideStep = (Math.random() - 0.5) * (vertical ? 0.08 : 0.26);
+    let prev = null;
+
+    for (let j = 0; j <= steps; j++) {
+      sideT = Math.max(facePad, Math.min(1 - facePad, sideT + sideStep + (Math.random() - 0.5) * 0.05));
+      y += (vertical ? -1 : Math.random() < 0.5 ? -1 : 1) * yStep * (0.55 + Math.random() * 0.55);
+      y = Math.max(-height * 0.43, Math.min(height * 0.43, y));
+      const next = pointOnFace(face, sideT, y);
+      if (prev) points.push(prev.x, prev.y, prev.z, next.x, next.y, next.z);
+      prev = next;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  const material = new THREE.LineBasicMaterial({
+    color: scratchColor,
+    transparent: true,
+    opacity: 0.52,
+    depthWrite: false,
+  });
+  const marks = new THREE.LineSegments(geometry, material);
+  marks.renderOrder = 1;
+  drum.add(marks);
+}
+
+/**
+ * Builds a jittered icosahedron geometry sculpted into a plain rock/boulder
+ * shape: squashed vertically, stretched/skewed on X/Z, with one randomly
+ * oriented "chipped" flat side and subtle horizontal ledge banding.
+ * @param {number} radius - base radius before jitter/squash, local units.
+ * @param {object} [opts]
+ * @param {boolean} [opts.shoulder=false] - use a lower jitter/squash profile for a rock meant to sit against another surface (e.g. a shoulder rock), vs. a freestanding boulder.
+ * @returns {THREE.BufferGeometry}
+ */
+export function makePlainRockGeometry(radius, { shoulder = false } = {}) {
+  const detail = shoulder ? 0 : 1;
+  const geometry = jitterGeo(
+    new THREE.IcosahedronGeometry(radius, detail),
+    radius * (shoulder ? 0.14 : 0.18),
+    { sphericalUvs: true }
+  );
+  const position = geometry.attributes.position;
+  const squash = shoulder ? 0.62 : 0.74;
+  const xScale = 1.12 + Math.random() * 0.28;
+  const zScale = 0.86 + Math.random() * 0.24;
+  const chipAngle = Math.random() * Math.PI * 2;
+  const chipX = Math.cos(chipAngle);
+  const chipZ = Math.sin(chipAngle);
+
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    const side = (x * chipX + z * chipZ) / radius;
+    const top = Math.max(0, y / radius);
+    const bottom = Math.max(0, -y / radius);
+    const chip = Math.max(0, side - 0.38) * (shoulder ? 0.18 : 0.34);
+    const ledge = Math.max(0, Math.sin((x - z) * 7.5)) * 0.035 * radius;
+
+    position.setXYZ(
+      i,
+      (x * xScale - chipX * chip * radius) * (1 + top * 0.07 - bottom * 0.10),
+      Math.max(y * squash - bottom * 0.11 * radius + ledge, -radius * 0.30),
+      (z * zScale - chipZ * chip * radius) * (1 + top * 0.04 - bottom * 0.08)
+    );
+  }
+
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}

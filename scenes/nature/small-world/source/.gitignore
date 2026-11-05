@@ -1,0 +1,90 @@
+# server runtime artifacts
+.server.pid
+.server.log
+*.pid
+*.log
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# editor / IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.\#*
+\#*\#
+.netrwhist
+.project
+.classpath
+.settings/
+
+# temp / scratch
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+.cache/
+tmp/
+temp/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# node (in case anyone ever runs tooling here)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# local agent settings
+*-mcp.json
+.gemini/
+.gemini-clipboard/
+.claude/settings.local.json
+.claude/.cc2cc-session-id
+.claude/scheduled_tasks.lock
+.claude/statusline-*
+claude_scratch/
+.pi/extensions/discord-relay/state.json
+.pi/status-footer.json
+*.local
+*.local.*
+docs/playgrounds
+docs/superpowers
+.superpowers
+
+# local git worktrees
+.worktrees/
+
+# build output — CI deploys this
+dist/
+.vite/
+
+# large static media served from static.pardev.net
+public/music/

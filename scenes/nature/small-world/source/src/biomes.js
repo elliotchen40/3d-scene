@@ -1,0 +1,540 @@
+/**
+ * Shared base config for each biome's `edgeAura`, spread into per-biome
+ * overrides (QA-015: every biome's edgeAura block used to be hand-duplicated
+ * with only `pattern`/`colors`/`alpha` actually varying — biomes now spread
+ * this and override just those three fields).
+ */
+export const EDGE_AURA_DEFAULTS = {
+  innerSoft: 0.24,
+  outerSoft: 10.5,
+  inwardOverlap: 0.23,
+  outwardFadeStart: 0.18,
+  y: 0.02,
+  noiseScale: 0.14,
+  streakScale: 34.0,
+  windStrength: 0.85,
+};
+
+/**
+ * The biome config table — one entry per selectable biome, each fully
+ * specifying palette, fog, accent/sun colors, allowed flora kinds + count,
+ * particle type, creature color palette + count range, plus optional
+ * dusk/night palette deltas. Optional flags (`water`, `cloudlike`,
+ * `glowFlowers`, `glowEyes`, `furProbability`, `creatureKind`,
+ * `hasWillowisps`, `giantFlora`, `guaranteeBurrower`, `treeFloraRadiusFrac`)
+ * gate cross-cutting behavior — see the biome-flag pattern in CLAUDE.md.
+ * Adding visual variety usually means editing this table, not the builders.
+ * @type {Object[]}
+ */
+export const BIOMES = [
+  {
+    id: "verdant",
+    name: "verdant grove",
+    sub: "a soft place. mosses underfoot.",
+    ground: ["#3a5a40", "#588157", "#a3b18a"],
+    cliff: "#2c3e2e",
+    underside: "#1a2820",
+    sky: "#d8e2c6",
+    fog: "#b6c9a3",
+    fogDensity: 0.011,
+    accent: "#f4a261",
+    sun: "#fff8e0",
+    flora: ["leafballtree", "leafballtree", "mushroom", "bigmushroom", "berrybush", "fern", "fern", "dandylion", "rock"],
+    floraCount: 90,
+    leafballTreePalette: {
+      trunk: "#5b3a24",
+      leaves: ["#355f37", "#6f9a55", "#b6c78b"],
+    },
+    particle: "leaf",
+    creatureColors: ["#53693e", "#657a45", "#7b7045", "#8a6a3f"],
+    creatureCount: [10, 16],
+    furProbability: 1.0,
+    furLength: 0.075,
+    flyerVariants: [
+      {
+        kind: "bumblebee",
+        stripeOverride: ["#111111", "#ffd13b"],
+      },
+    ],
+    groundMarks: { color: "#20341f", opacity: 0.16, life: 5.5, softness: 1.15 },
+    shadowLod: { microFloraShadows: false, leafballCanopyProxy: true, staticCasterRadiusFrac: 0.55 },
+    groveDetails: {
+      mushroomFamilies: true,
+      fairyRing: true,
+      groundCover: true,
+      sporeGlow: true,
+    },
+    // ARC-010: catalog.js gates the will-o-wisp catalog entry on this flag
+    // instead of `biome.id === "verdant"`.
+    hasWillowisps: true,
+    // ARC-010/QA-014: one giant leafballtree (3× scale) with an orbiting
+    // will-o-wisp, placed in the inner 2/3 of the island. Replaces the old
+    // `biome.id === "verdant"` branch in world.js's flora-placement loop.
+    giantFlora: { kind: "leafballtree", scaleMul: 3, maxRadiusFrac: 2 / 3, effect: "willowisp" },
+    dusk: { sky: "#e6a070", fog: "#c98a64", sun: "#ffb070", ground: "#5d4530" },
+    night: { sky: "#0d1a22", fog: "#0a1418", sun: "#7090a8", ground: "#0a1810" },
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#3a5a40", "#8aaa7a", "#c4d8b0"],
+      alpha: 0.90,
+    },
+  },
+  {
+    id: "desert",
+    name: "crimson dunes",
+    sub: "wind-carved silence.",
+    ground: ["#9c3a3a", "#d97757", "#f1c890"],
+    cliff: "#6b2424",
+    underside: "#3a1414",
+    sky: "#f6d4a8",
+    fog: "#d8a779",
+    fogDensity: 0.009,
+    accent: "#3d405b",
+    sun: "#ffe5b0",
+    flora: ["cactus", "cactus", "rock", "rock", "skull", "pillar"],
+    floraCount: 50,
+    particle: "sand",
+    bloom: false,
+    creatureColors: ["#f3c68f", "#d97757", "#a94a3f", "#7a3438"],
+    creatureCount: [6, 11],
+    // Butterflies read as out-of-place over the dunes — the desert gets fly
+    // swarms over skulls instead, set up during flora placement.
+    noButterflies: true,
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#9c3a3a", "#d97757", "#f1c890"],
+      alpha: 0.92,
+    },
+    groundMarks: { color: "#5f2424", opacity: 0.34, life: 7.0, softness: 1.1, poof: "sand" },
+    dusk: { sky: "#e07a4c", fog: "#b85a3a", sun: "#ff8050", ground: "#5e2828" },
+    night: { sky: "#160a18", fog: "#0d0716", sun: "#7068a8", ground: "#1a0a0e" },
+  },
+  {
+    id: "frozen",
+    name: "frozen vale",
+    sub: "even the rivers hold their breath.",
+    ground: ["#e8ecef", "#aebcc1", "#6b7a85"],
+    cliff: "#4a5560",
+    underside: "#1f2530",
+    sky: "#cad2c5",
+    fog: "#b6c5d4",
+    fogDensity: 0.015,
+    accent: "#457b9d",
+    sun: "#e0eaff",
+    flora: ["snowpine", "snowpine", "snowpine", "rock", "rock", "crystal"],
+    floraCount: 70,
+    particle: "snow",
+    creatureColors: ["#1d3557", "#457b9d", "#a8dadc", "#f1faee"],
+    creatureCount: [8, 13],
+    furProbability: 0.85,
+    noFlyerNests: true,
+    groundMarks: { color: "#8090a0", opacity: 0.30, life: 7.0, softness: 1.1, poof: "snow" },
+    dusk: { sky: "#a6b0d0", fog: "#8a98b6", sun: "#d8c8e8", ground: "#3a4258" },
+    night: { sky: "#0a1024", fog: "#070b1e", sun: "#a0b0d8", ground: "#0a0e1a" },
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#aebcc1", "#d0dae4", "#eaf0f6"],
+      alpha: 0.92,
+    },
+  },
+  {
+    id: "marsh",
+    name: "lavender marsh",
+    sub: "nocturne in violet.",
+    ground: ["#3d2c5a", "#6a4c93", "#b288c0"],
+    cliff: "#241638",
+    underside: "#0e0820",
+    sky: "#1a1033",
+    fog: "#3a1f5a",
+    fogDensity: 0.021,
+    accent: "#ffba08",
+    sun: "#d4b3ff",
+    water: "#1b1230",
+    anglerFish: true,
+    flora: ["reed", "reed", "reed", "mushroom", "mushroom", "dandylion", "rock", "lantern", "lantern", "archstone"],
+    floraCount: 100,
+    particle: "rain",
+    creatureColors: ["#ffba08", "#faa307", "#f48c06", "#ffd166"],
+    creatureCount: [12, 18],
+    furProbability: 0.20,
+    // ARC-010: replaces the old `biome.id === "marsh"` branch in world.js's
+    // creature-population loop — the marsh always gets at least one burrower.
+    guaranteeBurrower: true,
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#1a0a2e", "#9b6dc6", "#c9a0e0"],
+      alpha: 0.94,
+    },
+    dusk: { sky: "#2a1a48", fog: "#3a2058", sun: "#e09abf", ground: "#3d2c5a" },
+    night: { sky: "#06031a", fog: "#040214", sun: "#8a6ed8", ground: "#0a0518" },
+  },
+  {
+    id: "ashen",
+    name: "ashen wastes",
+    sub: "embers remember.",
+    ground: ["#2b2d42", "#4a4e69", "#6f6f7a"],
+    cliff: "#1a1b2e",
+    underside: "#0a0a14",
+    sky: "#1c1a26",
+    fog: "#2b2538",
+    fogDensity: 0.024,
+    accent: "#e63946",
+    sun: "#ff8866",
+    flora: [
+      "lavafissure", "lavafissure", "lavafissure", "lavafissure",
+      "deadtree", "rock", "rock", "skull", "crystal", "crystal",
+    ],
+    floraCount: 58,
+    leafballTreePalette: {
+      trunk: "#33232a",
+      leaves: ["#3d3948", "#6a4f56", "#e05a4f"],
+    },
+    particle: "cinder",
+    creatureColors: ["#e63946", "#f77f00", "#fcbf49", "#ffd166"],
+    creatureCount: [6, 10],
+    noButterflies: true,
+    darkBiome: true,
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#1a1b2e", "#2b2d42", "#4a4e69"],
+      alpha: 0.95,
+    },
+    dusk: { sky: "#2a1820", fog: "#3a2028", sun: "#ff6840", ground: "#2a1820" },
+    night: { sky: "#080610", fog: "#050308", sun: "#a04030", ground: "#050308" },
+  },
+  {
+    id: "golden",
+    name: "golden steppe",
+    sub: "endless honeyed afternoon.",
+    ground: ["#8b5a2b", "#dda15e", "#fefae0"],
+    cliff: "#5a3a18",
+    underside: "#2a1c08",
+    sky: "#fbe9c0",
+    fog: "#e7c08a",
+    fogDensity: 0.010,
+    accent: "#606c38",
+    sun: "#fff4d0",
+    flora: ["rock", "leafballtree", "leafballtree", "berrybush", "dandylion"],
+    floraCount: 115,
+    leafballTreePalette: {
+      trunk: "#8a5a2c",
+      leaves: ["#9a6d24", "#c49a3d", "#f1c86b"],
+    },
+    particle: "pollen",
+    bloom: false,
+    creatureColors: ["#283618", "#606c38", "#bc6c25", "#fefae0"],
+    creatureCount: [10, 15],
+    furProbability: 0.15,
+    groundMarks: { color: "#704218", opacity: 0.22, life: 6.2, softness: 1.0 },
+    // ARC-010: golden steppe's sparse canopy can afford wider tree spacing
+    // than the default 0.88 radius fraction. Replaces the old
+    // `biome.id === "golden"` branch in world.js's flora-placement loop.
+    treeFloraRadiusFrac: 0.98,
+    dusk: { sky: "#e89a5a", fog: "#c0824c", sun: "#ffc070", ground: "#5a3a18" },
+    night: { sky: "#0a0a1c", fog: "#06061a", sun: "#a08a70", ground: "#100805" },
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#8b5a2b", "#dda15e", "#fefae0"],
+      alpha: 0.90,
+    },
+  },
+  {
+    id: "mossy",
+    name: "mossy ruins",
+    sub: "older than memory, gentler than stone.",
+    ground: ["#3b5a3a", "#5e7c4a", "#9bb87c"],
+    cliff: "#2a3624",
+    underside: "#141d12",
+    sky: "#cfe0bd",
+    fog: "#9bb091",
+    fogDensity: 0.014,
+    accent: "#cdef8f",
+    sun: "#f6ffe0",
+    flora: ["pillar", "pillar", "archstone", "archstone", "fern", "fern", "mushroom", "dandylion", "rock", "rock", "leafballtree"],
+    floraCount: 80,
+    leafballTreePalette: {
+      trunk: "#4c3d28",
+      leaves: ["#49683c", "#7ea35d", "#b7d58a"],
+    },
+    particle: "lichenmote",
+    bloom: false,
+    creatureColors: ["#a3b18a", "#cdef8f", "#7bb074", "#f6ffe0"],
+    creatureCount: [8, 13],
+    furProbability: 0.70,
+    groundMarks: { color: "#1f2d16", opacity: 0.18, life: 5.8, softness: 1.2 },
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#2a3624", "#3b5a3a", "#9bb091"],
+      alpha: 0.82,
+    },
+    dusk: { sky: "#7a8488", fog: "#6a7a6e", sun: "#d8e0a0", ground: "#2a3624" },
+    night: { sky: "#070d10", fog: "#040608", sun: "#88a098", ground: "#080e08" },
+  },
+  {
+    id: "twilight",
+    name: "twilight meadow",
+    sub: "dusk lingers, the flowers remember light.",
+    ground: ["#2a3470", "#4a5598", "#8088c0"],
+    cliff: "#1a204a",
+    underside: "#0c0e26",
+    sky: "#3a3470",
+    fog: "#2c285a",
+    fogDensity: 0.013,
+    accent: "#ffd97a",
+    sun: "#ffb070",
+    flora: ["leafballtree", "fern", "dandylion", "rock", "berrybush"],
+    floraCount: 95,
+    leafballTreePalette: {
+      trunk: "#3b3158",
+      leaves: ["#2f3a7d", "#6970b2", "#c8a7de"],
+    },
+    particle: "firefly",
+    creatureColors: ["#ffd97a", "#ffb070", "#c9a8e8", "#fff2b3"],
+    creatureCount: [10, 15],
+    groundMarks: { color: "#171d48", opacity: 0.16, life: 5.5, softness: 1.15 },
+    furProbability: 0.45,
+    glowFlowers: true,
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "grass",
+      colors: ["#1C151A", "#1C151A", "#1C151A"],
+      alpha: 1.0,
+    },
+    dusk: { sky: "#3a3470", fog: "#2c285a", sun: "#ffb070", ground: "#1a204a" },
+    night: { sky: "#08081a", fog: "#040414", sun: "#a890d8", ground: "#06081a" },
+  },
+  {
+    id: "coral",
+    name: "coral atoll",
+    sub: "tides held in stillness.",
+    ground: ["#f8e6c2", "#f3d9a4", "#f0c98a"],
+    cliff: "#9b6f4a",
+    underside: "#3aa8b8",
+    sky: "#cdeef2",
+    fog: "#a8d6dc",
+    fogDensity: 0.012,
+    accent: "#ff7a8c",
+    sun: "#fffaef",
+    water: "#5fc6cf",
+    cloudTint: "#ffffff",
+    cloudOpacity: 0.75,
+    flora: [
+      "coral", "coral", "coral", "coral", "braincoral", "braincoral", "cupcoral", "cupcoral",
+      "seaweed", "seaweed", "seaweed", "seaweed", "seaweed", "seaweed", "seaweed", "seaweed",
+      "seaweed", "seaweed", "seaweed", "seaweed", "seaweed", "seaweed", "seaweed", "seaweed",
+      "reed", "limestonerock", "beachsucculent",
+    ],
+    floraCount: 78,
+    particle: "bubble",
+    bloom: false,
+    creatureColors: ["#ff7a8c", "#ffb88a", "#7ad6e0", "#fff2b3"],
+    creatureCount: [9, 14],
+    creatureKind: "fish",
+    noCaterpillars: true,
+    snailCountMultiplier: 2,
+    snailAntennaGlow: false,
+    groundMarks: { color: "#49828a", opacity: 0.24, life: 7.0, softness: 1.1, poof: "sand" },
+    dusk: { sky: "#e8a8c0", fog: "#c890a0", sun: "#ff8090", ground: "#7a4a4a" },
+    night: { sky: "#04102a", fog: "#021024", sun: "#a8b8d0", ground: "#102028" },
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#7ac6cf", "#b0e4e8", "#fff2e0"],
+      alpha: 0.90,
+    },
+  },
+  {
+    id: "cloud",
+    name: "cloud island",
+    sub: "the world without weight.",
+    ground: ["#fbfbff", "#eef4ff", "#fff8ee"],
+    cliff: "#c0c8e0",
+    underside: "#dde4f6",
+    sky: "#f4f6fa",
+    fog: "#eef1f7",
+    fogDensity: 0.022,
+    accent: "#9ec0ff",
+    sun: "#ffffff",
+    flora: ["balloontree", "balloontree", "balloontree", "fern", "dandylion"],
+    floraCount: 60,
+    particle: "feather",
+    creatureColors: ["#fff4b8", "#ffe08a", "#f6c36a", "#ffd0a3"],
+    creatureCount: [9, 14],
+    cloudlike: true,
+    noFlyerNests: true,
+    bloom: false,
+    cloudSwirl: false,
+    furProbability: 0.50,
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#b8c8e8", "#ffffff", "#fff5e8"],
+      alpha: 0.94,
+    },
+    dusk: { sky: "#e8c8d8", fog: "#d0b4cc", sun: "#ffd8d0", ground: "#a098b0" },
+    night: { sky: "#101830", fog: "#0a1228", sun: "#b8c0d8", ground: "#16203a" },
+  },
+  {
+    id: "grove",
+    name: "mushroom grove",
+    sub: "spore-soft and dim.",
+    ground: ["#3d3a52", "#5d557a", "#9888a8"],
+    cliff: "#2a253a",
+    underside: "#15101e",
+    sky: "#cdb8d8",
+    fog: "#a08bb8",
+    fogDensity: 0.016,
+    accent: "#ff90c0",
+    sun: "#ffe0f0",
+    flora: ["bigmushroom", "bigmushroom", "mushroom", "mushroom", "mushroom", "fern", "fern", "dandylion", "rock"],
+    floraCount: 95,
+    particle: "pollen",
+    creatureColors: ["#ff90c0", "#c7a0c8", "#9c84d4", "#ffd1a3"],
+    creatureCount: [10, 15],
+    groundMarks: { color: "#263016", opacity: 0.17, life: 5.8, softness: 1.2 },
+    furProbability: 0.55,
+    groveDetails: {
+      mushroomFamilies: true,
+      fairyRing: true,
+      groundCover: true,
+      sporeGlow: true,
+    },
+    // ARC-010/QA-014: one giant bigmushroom (4× scale) with wind/perch-bob
+    // muted, placed in the inner 1/3 of the island. Replaces the old
+    // `biome.id === "grove"` branch in world.js's flora-placement loop.
+    giantFlora: { kind: "bigmushroom", scaleMul: 4, maxRadiusFrac: 1 / 3, effect: "muteWind" },
+    dusk: { sky: "#9a7ab0", fog: "#7a5e90", sun: "#ffb0e0", ground: "#2a253a" },
+    night: { sky: "#08081e", fog: "#04041a", sun: "#c890d8", ground: "#08060e" },
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#3d3a52", "#9888a8", "#d4b8d8"],
+      alpha: 0.92,
+    },
+  },
+  {
+    id: "obsidian",
+    name: "volcanic glass",
+    sub: "the cracks remember the fire.",
+    ground: ["#0e0c14", "#1d1820", "#3a2828"],
+    cliff: "#08060c",
+    underside: "#000000",
+    sky: "#1a0f10",
+    fog: "#1a0e10",
+    fogDensity: 0.026,
+    accent: "#ff7a2a",
+    sun: "#ff9050",
+    flora: [
+      "lavafissure", "lavafissure", "lavafissure",
+      "obsidianshard", "obsidianshard", "rock", "skull", "obsidianglass",
+    ],
+    floraCount: 56,
+    particle: "spark",
+    creatureColors: ["#1a1018", "#3a2018", "#ff7a2a", "#ffb060"],
+    creatureCount: [7, 11],
+    noButterflies: true,
+    glowEyes: true,
+    darkBiome: true,
+    sunIntensity: 8.8,
+    edgeAura: {
+      ...EDGE_AURA_DEFAULTS,
+      pattern: "mist",
+      colors: ["#0a0204", "#8b1a1a", "#ff4020"],
+      alpha: 0.95,
+    },
+    dusk: { sky: "#2a1018", fog: "#1a0810", sun: "#ff6020", ground: "#1a0e0a" },
+    night: { sky: "#04020a", fog: "#020108", sun: "#ff5020", ground: "#02010a" },
+  },
+];
+
+/** Per-biome wildflower color palette (hex strings). Biomes absent here fall back to a default palette. */
+export const WILDFLOWER_PALETTES = {
+  // Bright, varied garden biomes.
+  verdant: ["#f4a261", "#e76f51", "#fefae0", "#fff2b3"],
+  marsh:   ["#ffba08", "#ff6d6d", "#c9a8e8", "#ffd166"],
+  twilight:["#ffd97a", "#ffb070", "#c9a8e8", "#fff2b3"],
+  coral:   ["#ff7a8c", "#ffb88a", "#fff2b3", "#7ad6e0"],
+
+  // Tighter biome palettes — stay close to the local material range.
+  frozen:  ["#cad2ff", "#f1faee", "#e0c3fc"],
+  golden:  ["#fefae0", "#f1c890", "#dda15e", "#bc8a45"],
+  mossy:   ["#cdef8f", "#fff2b3", "#a8d8a3"],
+  grove:   ["#ff90c0", "#fff2b3", "#9c84d4"],
+  obsidian:["#ff7a2a", "#ffb060", "#fcbf49"],
+};
+
+/**
+ * Optional per-biome grass density overrides. When empty, every biome uses
+ * `grass.js`'s shared stock density; set a biome id to 0 here to disable its
+ * grass field, or to a positive count to retune only that biome.
+ */
+export const GRASS_DENSITY = { ashen: 0, desert: 0, frozen: 0, coral: 0, cloud: 0, obsidian: 0 };
+/**
+ * Optional per-biome grass height multipliers. When empty, every biome uses
+ * the shared grass height; add a biome id here for future biome-specific tuning.
+ */
+export const GRASS_HEIGHT = {};
+
+/**
+ * Per-biome rejection threshold for the grass density noise. Blades whose
+ * underlying noise sample at world XZ falls below this threshold are not
+ * placed, producing bald patches. Range [0, 1]; higher = balder. Biomes
+ * without an override use 0.18 (light flecking only); sparse/dry biomes
+ * raise it so the field reads patchy.
+ */
+export const BALD_THRESHOLD = {
+  verdant: 0.10,
+  golden: 0.00,
+  twilight: 0.18,
+  ashen: 0.45,
+  obsidian: 0.40,
+};
+/** Per-biome target wildflower count. 0 = biome has no wildflowers. */
+export const FLOWER_DENSITY = {
+  verdant: 180, desert: 0, frozen: 0,
+  marsh:   220, ashen:   0, golden: 200,
+  mossy:   140, twilight: 240, coral: 0,
+  cloud:   0,   grove:   170, obsidian: 0,
+};
+/**
+ * Per-biome cloud count for the sky-backdrop. 0/undefined = no clouds
+ * (overcast deserts, smoky biomes). Cloud island gets the most by far.
+ */
+export const CLOUD_COUNT = {
+  verdant: 16, desert: 3, frozen: 10, marsh: 14,
+  ashen:    5, golden: 20, mossy:  12, twilight: 14,
+  coral:   30, cloud:  30, grove:  12, obsidian:  7,
+};
+/** Biomes that get aurora curtains at night. Tinted via `AURORA_TINTS`. @type {Set<string>} */
+export const AURORA_BIOMES = new Set(["frozen", "twilight", "cloud"]);
+/** Per-biome aurora curtain color palette (hex strings), for members of `AURORA_BIOMES`. */
+export const AURORA_TINTS = {
+  frozen:   ["#7df0c8", "#a98cff", "#f6d6ff"],
+  twilight: ["#ffd97a", "#c9a8e8", "#8fe9ff"],
+  cloud:    ["#a8e0ff", "#ffd0e8", "#fff6b8"],
+};
+
+/** Per-biome target pebble ground-cover instance count. */
+export const PEBBLE_DENSITY = {
+  verdant: 80, desert: 130, frozen: 100,
+  marsh:   70, ashen:  140, golden: 90,
+  mossy:  120, twilight: 70, coral: 55,
+  cloud:   0, grove:    80, obsidian: 160,
+};
+
+/** Per-biome target beachcomb ground-cover instance count. Biomes absent here get none. */
+export const BEACHCOMB_DENSITY = {
+  coral: 95,
+};
+
+/** Per-biome bloom radius multiplier (1.0 = user setting, 0.85 = 15% smaller). */
+export const BLOOM_RADIUS_SCALE = {
+  twilight: 0.85,
+};

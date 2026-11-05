@@ -2,3 +2,7 @@ node_modules/
 .DS_Store
 *.log
 .vite-temp/
+
+# nature 素材库的构建缓存
+scenes/nature/*/source/node_modules/
+scenes/nature/*/source/dist/

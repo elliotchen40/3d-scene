@@ -4,6 +4,10 @@
 //
 // The three scenes are plain static bundles, so any static host works
 // (GitHub Pages, Netlify, nginx). This server exists only for local preview.
+//
+// The scenes/nature/ projects are Vite builds with base './', so they resolve
+// their assets relative to their own directory and work under any mount path
+// (including GitHub Pages' /<repo>/ sub-path).
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -74,4 +78,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  sidi:   http://localhost:${PORT}/scenes/sidi-bou-said/index.html`);
   console.log(`  forest: http://localhost:${PORT}/scenes/forest/index.html`);
   console.log(`  veilspire: http://localhost:${PORT}/scenes/veilspire/index.html`);
+  console.log(`  nature:    http://localhost:${PORT}/scenes/nature/`);
 });
