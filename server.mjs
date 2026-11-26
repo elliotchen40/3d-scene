@@ -8,8 +8,14 @@
 // The scenes/nature/ projects are Vite builds with base './', so they resolve
 // their assets relative to their own directory and work under any mount path
 // (including GitHub Pages' /<repo>/ sub-path).
+//
+// Optional TLS listener (for phones on the LAN, which need a secure context
+// for WebGPU):
+//   TLS_CERT=cert.pem TLS_KEY=key.pem TLS_PORT=8004 node server.mjs
+//   HTTPS_PUBLIC_PORT=19406 node server.mjs   # host-visible port of the TLS listener
 
 import http from 'node:http';
+import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,10 +45,18 @@ const MIME = {
 // Abyssal Garden needs WebGPU, and browsers only expose it in a secure context
 // (https:// or localhost). Reached over plain http:// from a LAN or Tailscale
 // address the page would fail with "This scene needs a secure connection", so
-// bounce those requests to the https deployment instead.
+// bounce those requests to an https:// address instead.
+//
+// HTTPS_PUBLIC_PORT: the host-visible port of the TLS listener (the container
+//   maps 8003->19405 and 8004->19406, so 19406 here). When it is set, the
+//   redirect keeps the hostname the visitor typed and only swaps the scheme
+//   and port, so a Tailscale address stays a Tailscale address and a LAN
+//   address stays a LAN address.
+//   When it is not set, the public GitHub Pages deployment is used.
+const HTTPS_PUBLIC_PORT = process.env.HTTPS_PUBLIC_PORT;
 const ABYSSAL_HTTPS = 'https://elliotchen40.github.io/3d-scene/scenes/abyssal-garden/index.html';
 
-const server = http.createServer((req, res) => {
+const handler = (req, res) => {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname);
@@ -54,9 +68,15 @@ const server = http.createServer((req, res) => {
   const host = (req.headers.host || '').toLowerCase();
   const loopback = !host || host.includes('localhost') || host.startsWith('127.') || host.startsWith('[::1]');
   const proxied = (req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https';
-  if (!loopback && !proxied && pathname.startsWith('/scenes/abyssal-garden/')) {
+  const secure = req.socket.encrypted === true;
+  if (!secure && !loopback && !proxied && pathname.startsWith('/scenes/abyssal-garden/')) {
     const q = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    res.writeHead(302, { Location: ABYSSAL_HTTPS + q, 'Cache-Control': 'no-cache' });
+    let target = ABYSSAL_HTTPS;
+    if (HTTPS_PUBLIC_PORT) {
+      const hostname = host.replace(/:\d+$/, '') || 'localhost';
+      target = `https://${hostname}:${HTTPS_PUBLIC_PORT}${pathname}${q}`;
+    }
+    res.writeHead(302, { Location: target, 'Cache-Control': 'no-cache' });
     res.end();
     return;
   }
@@ -86,7 +106,22 @@ const server = http.createServer((req, res) => {
     'Cache-Control': 'no-cache',
   });
   fs.createReadStream(file).pipe(res);
-});
+};
+
+const server = http.createServer(handler);
+
+// Optional TLS listener: TLS_CERT + TLS_KEY turn this into an https server,
+// which is what a phone on the LAN needs for WebGPU (secure context).
+const TLS_CERT = process.env.TLS_CERT, TLS_KEY = process.env.TLS_KEY;
+if (TLS_CERT && TLS_KEY) {
+  const sport = Number(process.env.TLS_PORT || PORT + 1);
+  https.createServer(
+    { cert: fs.readFileSync(TLS_CERT), key: fs.readFileSync(TLS_KEY) },
+    handler,
+  ).listen(sport, '0.0.0.0', () => {
+    console.log(`3d-scene preview (https) → https://localhost:${sport}`);
+  });
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`3d-scene preview → http://localhost:${PORT}`);
