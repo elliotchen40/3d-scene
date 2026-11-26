@@ -36,12 +36,28 @@ const MIME = {
   '.md': 'text/markdown; charset=utf-8',
 };
 
+// Abyssal Garden needs WebGPU, and browsers only expose it in a secure context
+// (https:// or localhost). Reached over plain http:// from a LAN or Tailscale
+// address the page would fail with "This scene needs a secure connection", so
+// bounce those requests to the https deployment instead.
+const ABYSSAL_HTTPS = 'https://elliotchen40.github.io/3d-scene/scenes/abyssal-garden/index.html';
+
 const server = http.createServer((req, res) => {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname);
   } catch {
     res.writeHead(400).end('bad request');
+    return;
+  }
+
+  const host = (req.headers.host || '').toLowerCase();
+  const loopback = !host || host.includes('localhost') || host.startsWith('127.') || host.startsWith('[::1]');
+  const proxied = (req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https';
+  if (!loopback && !proxied && pathname.startsWith('/scenes/abyssal-garden/')) {
+    const q = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.writeHead(302, { Location: ABYSSAL_HTTPS + q, 'Cache-Control': 'no-cache' });
+    res.end();
     return;
   }
 
