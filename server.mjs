@@ -79,4 +79,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  forest: http://localhost:${PORT}/scenes/forest/index.html`);
   console.log(`  veilspire: http://localhost:${PORT}/scenes/veilspire/index.html`);
   console.log(`  nature:    http://localhost:${PORT}/scenes/nature/`);
+  console.log(`  abyssal:   http://localhost:${PORT}/scenes/abyssal-garden/index.html`);
 });
