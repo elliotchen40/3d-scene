@@ -1,0 +1,13 @@
+{
+  "name": "abyssal-echo",
+  "private": true,
+  "description": "Abyssal Echo — a sonar hunt game built on the Abyssal Garden engine",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:readable": "node build.mjs --readable"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

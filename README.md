@@ -8,6 +8,7 @@ Three.js 场景合集 —— 纯静态部署，无外部 CDN 依赖。
 | [Forest](scenes/forest/) | 第一人称林地漫游，流动溪流、步态与涉水音效 | Three.js 0.153 · 原生 ES modules |
 | [Veilspire](scenes/veilspire/) | 开放世界魔法学院谷地：城堡、村庄、遗迹、洞窟、湖泊、昼夜天气与居民（已移除全部战斗与任务） | Three.js 0.185 · Vite |
 | [Abyssal Garden](scenes/abyssal-garden/) | 可游进去的程序化水下世界：海带森林、光柱、沉船、石鲸尾、蝠鲼、紫色洞窟；修好了上游三个 iOS 真机缺陷 | WebGPU · WGSL · 单文件 HTML |
+| [Abyssal Echo](scenes/abyssal-echo/) | 建在 Abyssal Garden 引擎上的声呐寻宝：12 枚随机分布的光核，越深分值越高，深水耗氧更快，氧气只减不增 | WebGPU · WGSL · 单文件 HTML |
 | [自然环境素材库](scenes/nature/) | 九个自然环境方向的开源项目：四季昼夜、12 群系漂浮岛、Gerstner 海面、FFT 物理海、土壤苔藓草、飘雪积雪、雨丝涟漪闪电、表面生成藤蔓、零素材丛林小径 | Three.js 0.170–0.186 · Vite |
 
 ## 本地预览

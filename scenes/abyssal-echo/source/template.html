@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang=zh-CN>
+<head>
+<meta charset=utf-8>
+<title>深海回声 · Abyssal Echo</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=theme-color content=#03131c>
+<style>
+/* The class on <body> is the state of the page:
+   l = loading, m = menu, g = in the scene (g p while the mouse is captured), l e = failed to start */
+html { background: #03131c; }
+body {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%; margin: 0; overflow: hidden;
+  background: radial-gradient(#0b3a4d, #03131c 70%);
+  font: 700 clamp(13px, .7vw + .9vh, 36px)/1.4 system-ui, sans-serif; color: #e8fbff;
+  -webkit-user-select: none; user-select: none;
+}
+/* a phone held upright gets the whole page turned on its side, so the scene is always landscape */
+@media (orientation: portrait) and (pointer: coarse) {
+  body { width: 100dvh; height: 100dvw; transform-origin: 0 0; transform: rotate(90deg) translateY(-100%); }
+}
+
+/* the scene: blurred and dimmed behind the menu, comes into focus when you dive */
+canvas {
+  position: absolute; width: 100%; height: 100%; touch-action: none; cursor: crosshair;
+  transition: filter 1s, transform 1s, opacity 2s;
+}
+body:not(.g) canvas { filter: blur(1vmax) brightness(.5); transform: scale(1.06); }
+.l canvas { opacity: 0; }
+
+/* menu: the loading bar and the buttons share one grid cell, so nothing jumps when they swap */
+#m {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: min(2.2em, 6vmin);
+  padding: 1em 1em 4.5em; text-align: center; background: radial-gradient(#03131c00 30%, #03131ccc);
+  transition: opacity .5s, visibility .5s;
+}
+.g #m, .m #l, .l #g { opacity: 0; visibility: hidden; }
+h1 {
+  margin: 0; font: 900 4.4em/1 system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase;
+  color: #0000; background: linear-gradient(#fff 25%, #7ff3ff 60%, #14a9c4);
+  -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 .06em .2em #000c);
+}
+p { margin: 0; }
+#a { display: grid; width: 30em; max-width: 100%; }
+#a > * { grid-area: 1/1; transition: opacity .8s, visibility .8s; }
+#s, #w, #q, #k, #h, #r { font-size: .8em; letter-spacing: .12em; text-transform: uppercase; }
+#w { margin-top: 1.2em; color: #7ff3ff; text-wrap: balance; }
+
+/* loading bar */
+#p {
+  height: .5em; margin: .4em 0 1em; overflow: hidden; border-radius: 1em; background: #03131c;
+  box-shadow: 0 0 0 2px #7ff3ff80, 0 0 1.5em #14a9c4;
+}
+#b {
+  display: block; height: 100%; background: linear-gradient(90deg, #14a9c4, #9ff6ff);
+  transform: scaleX(0); transform-origin: left; will-change: transform;
+}
+.e #p { visibility: hidden; }
+.e #s { font-size: 1.1em; letter-spacing: 0; text-transform: none; }
+
+/* buttons */
+button, a {
+  display: flex; align-items: center; justify-content: center; gap: .6em; padding: .8em 1.4em; border: 0;
+  border-radius: .5em; background: #fff; box-shadow: inset 0 -.2em #0003, 0 .3em 1em #0009;
+  font: 800 1em/1.2 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; text-decoration: none;
+  color: #03222d; cursor: pointer; transition: transform .12s, filter .12s;
+}
+button:hover, a:hover { transform: translateY(-.12em); filter: brightness(1.15); }
+button:active, a:active { transform: translateY(.1em); filter: brightness(.9); }
+:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+#g { display: grid; gap: min(1.2em, 3.5vmin); }
+#d {
+  padding: .9em; background: linear-gradient(#9ff6ff, #19c3d6); font-size: 1.3em;
+  box-shadow: inset 0 -.2em #0003, 0 0 2em #19c3d6b3;
+}
+
+/* GitHub and Ko-fi: always at the bottom of the menu, in their own colours */
+#f { position: absolute; left: 0; right: 0; bottom: 1.5em; display: flex; justify-content: center; gap: 1em; font-size: .8em; }
+a + a { background: #ff5e5b; color: #fff; }
+svg { width: 1.5em; height: 1.5em; fill: currentColor; }
+
+/* dark plates under the dive button: detail level, list of controls, touch hint */
+#q, #k, #h, #r { padding: 1em 1.6em; border-radius: .7em; background: #03131cb3; }
+
+/* detail level: three buttons in a row, the current one lit */
+#q { display: flex; align-items: center; gap: .4em; padding: .4em; }
+#q span { flex: 1; color: #7ff3ff; }
+#q button { flex: 1.2; padding: .7em 0; background: none; box-shadow: none; color: #e8fbff; }
+#q button:hover { background: #7ff3ff33; }
+#q .on { background: linear-gradient(#9ff6ff, #19c3d6); box-shadow: inset 0 -.2em #0003; color: #03222d; pointer-events: none; }
+
+/* the rules of the dive */
+#r { text-align: left; text-transform: none; letter-spacing: 0; font-size: .78em; line-height: 1.7; color: #cfeef7; }
+#r b { color: #9ff6ff; }
+#r i { font-style: normal; color: #ffd08a; }
+
+/* list of controls: two groups, key caps right-aligned against their labels */
+#k { display: flex; justify-content: center; gap: 2em; text-align: left; }
+#k p { display: grid; grid-template-columns: auto auto; align-content: start; align-items: center; gap: .55em .9em; }
+#k p + p { padding-left: 2em; border-left: 2px solid #7ff3ff40; }
+#k i { display: flex; justify-self: end; align-items: center; gap: .25em; font-style: normal; }
+#k b {
+  min-width: 1.1em; padding: .2em .5em; border-radius: .35em; background: #e8fbff;
+  box-shadow: inset 0 -.15em #0004; color: #03222d; text-align: center;
+}
+#h { display: none; }
+@media (pointer: coarse), (max-height: 30em) {
+  #k { display: none; }
+}
+@media (pointer: coarse) {
+  #h { display: block; }
+}
+
+/* in the scene: a small menu button (hidden while the mouse is captured, Esc does the same) and the stats line */
+#o {
+  position: absolute; top: .6em; right: .6em; display: none; padding: .3em .6em; background: #03222dd9;
+  box-shadow: inset 0 0 0 2px #7ff3ff, 0 .3em 1em #0009; font-size: 1.3em; color: #e8fbff; opacity: .8;
+}
+.g #o { display: flex; }
+.p #o { display: none; }
+#i {
+  position: absolute; top: 1em; left: 1.2em; margin: 0; font: .8em/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap; text-shadow: 0 1px 4px #000; pointer-events: none;
+}
+</style>
+</head>
+<body class=l>
+<canvas id=c></canvas>
+<div id=m>
+  <h1>Abyssal Echo</h1>
+  <div id=a>
+    <div id=l><div id=p><i id=b></i></div><p id=s>Diving…</p><p id=w hidden>Use Google Chrome for optimal experience</p></div>
+    <div id=g>
+      <button id=d>下潜</button>
+      <p id=q><span>Detail</span><button>Low</button><button>Medium</button><button>High</button></p>
+      <p id=r>
+        海沟里漂着 <b>12 枚光核</b>。水太浑，看不见 —— 按 <b>声呐</b> 让附近的光核亮起来。<br>
+        <b>越深的光核越值钱</b>，但深水消耗空气更快；空气见底，这一潜就白费了。<br>
+        浅水区会自动补气，抓紧时间下潜。
+      </p>
+      <div id="k">
+        <p>
+          <i><b>W</b><b>A</b><b>S</b><b>D</b></i>游动
+          <i><b>Q</b><b>E</b></i>下潜 / 上浮
+          <i><b>Shift</b></i>加速
+        </p>
+        <p>
+          <i><b>Space</b></i>声呐
+          <i><b>Esc</b></i>菜单
+          <i><b>M</b></i>静音
+          <i><b>H</b></i>统计
+        </p>
+      </div>
+      <p id=h>按住前进 · 滑动转向 · 第二指加速 · 右下角按钮声呐</p>
+    </div>
+  </div>
+  <p id=f>
+    <a href=https://github.com/Noniv/abyssal-garden target=_blank><svg viewBox="0 0 16 16"><path d="M8 0c4.42 0 8 3.58 8 8a8 8 0 0 1-8 8 8 8 0 0 1 0-16zm0 1.5A6.5 6.5 0 1 0 14.5 8 6.5 6.5 0 0 0 8 1.5zm4.75 3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5a.75.75 0 0 1 .75-.75zm-2.5 0a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5A.75.75 0 0 1 10.25 5z"/></svg>上游项目</a>
+    <a href=https://ko-fi.com/noniv target=_blank><svg viewBox="0 0 24 24"><path d="M22 12A10 10 0 0 1 12 22 10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10zM12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm4.5 8a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0z"/></svg>支持原作者</a>
+  </p>
+</div>
+<button id=o aria-label=Menu>≡</button>
+<pre id=i></pre>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>
