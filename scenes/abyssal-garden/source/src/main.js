@@ -22,7 +22,7 @@ const IS_SAFARI = /Safari/.test(navigator.userAgent) && !/Chrom(e|ium)|Edg/.test
 if (!navigator.gpu) fail(!window.isSecureContext
   ? 'This page is not a secure context, so the browser hides WebGPU entirely. Open it over https:// (or http://localhost) — a plain http:// address on the LAN will never work.'
   : IS_SAFARI
-  ? 'This scene needs WebGPU. Safari has it from macOS 15 (Safari 18) — check "About This Mac". Chrome or Edge run it too.'
+  ? 'This scene needs WebGPU. Safari provides it from Safari 26 (macOS 26 / iPadOS 26) — check "About This Mac". On iPad every browser is WebKit, so there is no Chrome or Edge to fall back to.'
   : 'This scene needs WebGPU. Try a current Chrome or Edge.');
 const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
 if (!adapter) fail(IS_SAFARI

@@ -51,9 +51,12 @@ async function run() {
   const ua = navigator.userAgent;
   const m = ua.match(/Version\/([\d.]+).*Safari/) || ua.match(/Safari\/([\d.]+)/);
   const mm = ua.match(/Mac OS X (\d+[_.]\d+)/);
+  const iosm = ua.match(/CPU (?:iPhone |iPad )?OS (\d+[_\.]\d+)/);
+  const ipad = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   line('浏览器 UA', esc(ua));
   line('Safari 版本', m ? esc(m[1]) : '—');
-  line('macOS 版本', /Macintosh/.test(ua) ? 'Safari 的 UA 被冻结成 10_15_7，读不出来 —— 请看「关于本机」' : mm ? esc(mm[1].replace('_', '.')) + '（推测）' : '—');
+  line(ipad ? 'iPadOS 版本' : 'macOS 版本', iosm ? esc(iosm[1].replace('_', '.')) + '（推测）' : /Macintosh/.test(ua) ? 'Safari 的 UA 被冻结成 10_15_7，读不出来 —— 请看「设置 → 通用 → 关于本机」' : mm ? esc(mm[1].replace('_', '.')) + '（推测）' : '—');
+  line('设备类型', ipad ? 'iPad —— 所有浏览器都用 WebKit，没有 Chromium 可退' : '桌面');
   line('安全上下文', String(window.isSecureContext), window.isSecureContext ? 'ok' : 'no');
   if (!window.isSecureContext) {
     line('⚠ 关键', 'WebGPU 只在 https:// 或 http://localhost 下可用 —— 你现在这个地址会让 Safari 直接隐藏 navigator.gpu', 'no');
@@ -65,7 +68,11 @@ async function run() {
   if (!navigator.gpu) {
     line('结论', '这个浏览器没有提供 WebGPU —— 场景无法运行', 'no');
     say('navigator.gpu 不存在');
-    if (/Safari/.test(ua) && !/Chrom/.test(ua)) say('Safari：WebGPU 自 macOS 15 / Safari 18 起提供；请在「关于本机」确认系统版本');
+    if (/Safari/.test(ua) && !/Chrom/.test(ua)) {
+      const sv = m ? parseFloat(m[1]) : 0;
+      if (sv >= 26) say('Safari ' + sv + ' 版本够新（WebGPU 自 Safari 26 起提供），但这台设备的 GPU 不被 WebGPU 认可 —— iPad 上尤其常见：老款 A10 / A12X 达不到硬件门槛');
+      else say('Safari：WebGPU 自 Safari 26 起提供（iOS/iPadOS 26、macOS 26）；当前 Safari ' + (sv || '?') + ' 太旧 —— 请在「关于本机」确认系统与 Safari 版本');
+    }
     finish();
     return;
   }
