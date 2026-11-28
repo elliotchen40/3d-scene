@@ -30,6 +30,7 @@ a { color:#58a6ff; }
 <body>
 <h1>WebGPU 自检</h1>
 <p class=sub>逐项检查你的浏览器支持这个场景需要的每一项能力。全部为「通过」即可正常游玩。</p>
+<p class=sub><a href="../abyssal-echo/index.html">→ 打开「深海回声」场景</a>（请确保地址是 https:// 或 localhost）</p>
 
 <div id=out></div>
 
@@ -54,7 +55,10 @@ async function run() {
   line('Safari 版本', m ? esc(m[1]) : '—');
   line('macOS 版本', /Macintosh/.test(ua) ? 'Safari 的 UA 被冻结成 10_15_7，读不出来 —— 请看「关于本机」' : mm ? esc(mm[1].replace('_', '.')) + '（推测）' : '—');
   line('安全上下文', String(window.isSecureContext), window.isSecureContext ? 'ok' : 'no');
-  if (!window.isSecureContext) say('不是安全上下文：WebGPU 只在 https:// 或 http://localhost 下可用');
+  if (!window.isSecureContext) {
+    line('⚠ 关键', 'WebGPU 只在 https:// 或 http://localhost 下可用 —— 你现在这个地址会让 Safari 直接隐藏 navigator.gpu', 'no');
+    say('不是安全上下文：WebGPU 只在 https:// 或 http://localhost 下可用');
+  }
 
   // ---- navigator.gpu
   line('navigator.gpu', navigator.gpu ? '存在' : '不存在', navigator.gpu ? 'ok' : 'no');

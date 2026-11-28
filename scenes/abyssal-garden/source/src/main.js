@@ -19,7 +19,9 @@ const fail = (m) => { throw new Error(m, { cause: 1 }); }; // cause marks a mess
 // Safari only ships WebGPU from macOS 15 / Safari 18. The engine used to show every Safari
 // user a "use Chrome" line, which read as "this will not run here" — so name the real cause.
 const IS_SAFARI = /Safari/.test(navigator.userAgent) && !/Chrom(e|ium)|Edg/.test(navigator.userAgent);
-if (!navigator.gpu) fail(IS_SAFARI
+if (!navigator.gpu) fail(!window.isSecureContext
+  ? 'This page is not a secure context, so the browser hides WebGPU entirely. Open it over https:// (or http://localhost) — a plain http:// address on the LAN will never work.'
+  : IS_SAFARI
   ? 'This scene needs WebGPU. Safari has it from macOS 15 (Safari 18) — check "About This Mac". Chrome or Edge run it too.'
   : 'This scene needs WebGPU. Try a current Chrome or Edge.');
 const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
