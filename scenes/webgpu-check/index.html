@@ -52,7 +52,7 @@ async function run() {
   const mm = ua.match(/Mac OS X (\d+[_.]\d+)/);
   line('浏览器 UA', esc(ua));
   line('Safari 版本', m ? esc(m[1]) : '—');
-  line('macOS 版本', mm ? esc(mm[1].replace('_', '.')) + '（推测）' : '—');
+  line('macOS 版本', /Macintosh/.test(ua) ? 'Safari 的 UA 被冻结成 10_15_7，读不出来 —— 请看「关于本机」' : mm ? esc(mm[1].replace('_', '.')) + '（推测）' : '—');
   line('安全上下文', String(window.isSecureContext), window.isSecureContext ? 'ok' : 'no');
   if (!window.isSecureContext) say('不是安全上下文：WebGPU 只在 https:// 或 http://localhost 下可用');
 
@@ -155,6 +155,53 @@ async function run() {
     r.setPipeline(p); r.setVertexBuffer(0, b); r.draw(4, 2); r.end();
     device.queue.submit([e.finish()]);
     b.destroy(); return true;
+  });
+  await T('顶点阶段采样 3D 纹理（浮游物）', () => {
+    const t = device.createTexture({ size: [32, 32, 16], dimension: '3d', format: 'rg8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    const s = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    const m = device.createShaderModule({ code: `
+      @group(0) @binding(0) var t: texture_3d<f32>;
+      @group(0) @binding(1) var s: sampler;
+      struct V { @location(0) a: vec4f };
+      @vertex fn vs(v: V) -> @builtin(position) vec4f {
+        let c = textureSampleLevel(t, s, vec3f(v.a.xy, 0.5), 0.).r;
+        return vec4f(c, 0., 0., 1.);
+      }` });
+    const p = device.createRenderPipeline({ layout: 'auto',
+      vertex: { module: m, entryPoint: 'vs', buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }] }] },
+      fragment: { module: device.createShaderModule({ code: `
+        @fragment fn fs() -> @location(0) vec4f { return vec4f(1.); }` }), entryPoint: 'fs', targets: [{ format: 'rgba16float' }] } });
+    const bg = device.createBindGroup({ layout: p.getBindGroupLayout(0), entries: [{ binding: 0, resource: t.createView() }, { binding: 1, resource: s }] });
+    const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    const e = device.createCommandEncoder();
+    const r = e.beginRenderPass({ colorAttachments: [{ view: device.createTexture({ size: [32, 32], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+    r.setPipeline(p); r.setBindGroup(0, bg); r.setVertexBuffer(0, b); r.draw(3, 1); r.end();
+    device.queue.submit([e.finish()]);
+    t.destroy(); b.destroy(); return true;
+  });
+  await T('深度比较采样器（阴影）', () => {
+    const t = device.createTexture({ size: [64, 64], format: 'depth32float',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
+    const s = device.createSampler({ compare: 'less' });
+    const m = device.createShaderModule({ code: `
+      @group(0) @binding(0) var t: texture_depth_2d;
+      @group(0) @binding(1) var s: sampler_comparison;
+      struct V { @location(0) a: vec4f };
+      @vertex fn vs(v: V) -> @builtin(position) vec4f { return vec4f(v.a.xy, 0., 1.); }
+      @fragment fn fs(@builtin(position) c: vec4f) -> @location(0) vec4f {
+        return vec4f(textureSampleCompareLevel(t, s, c.xy / 64., 0.5));
+      }` });
+    const p = device.createRenderPipeline({ layout: 'auto',
+      vertex: { module: m, entryPoint: 'vs', buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }] }] },
+      fragment: { module: m, entryPoint: 'fs', targets: [{ format: 'rgba16float' }] } });
+    const bg = device.createBindGroup({ layout: p.getBindGroupLayout(0), entries: [{ binding: 0, resource: t.createView() }, { binding: 1, resource: s }] });
+    const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    const e = device.createCommandEncoder();
+    const r = e.beginRenderPass({ colorAttachments: [{ view: device.createTexture({ size: [64, 64], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+    r.setPipeline(p); r.setBindGroup(0, bg); r.setVertexBuffer(0, b); r.draw(3, 1); r.end();
+    device.queue.submit([e.finish()]);
+    t.destroy(); b.destroy(); return true;
   });
   await T('计算着色器 dispatch（地形烘焙）', () => {
     const m = device.createShaderModule({ code: `
