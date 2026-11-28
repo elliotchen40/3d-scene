@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang=zh-CN>
+<head>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>WebGPU 自检 · 3D Scene</title>
+<style>
+:root { color-scheme: dark; }
+body { margin:0; padding:22px 16px 40px; background:#0d1117; color:#e6edf3;
+  font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+h1 { font-size:19px; margin:0 0 4px; }
+p.sub { margin:0 0 20px; color:#8b949e; font-size:13px; }
+.h { display:flex; align-items:baseline; gap:10px; padding:9px 12px; margin:6px 0;
+  background:#161b22; border:1px solid #30363d; border-radius:8px; }
+.h .k { flex:0 0 150px; color:#8b949e; font-size:12.5px; }
+.h .v { flex:1; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; word-break:break-all; }
+.b { display:inline-block; min-width:58px; padding:1px 8px; border-radius:20px; font-size:11.5px; font-weight:700; text-align:center; }
+.ok { background:#123d24; color:#5fd68a; border:1px solid #1f6b3d; }
+.no { background:#4a1a17; color:#ff8f7a; border:1px solid #7d2c22; }
+.wa { background:#4a3a12; color:#ffcf6b; border:1px solid #7d6122; }
+h2 { font-size:14px; margin:24px 0 8px; color:#58a6ff; font-weight:600; }
+pre { background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:12px; overflow:auto;
+  font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; line-height:1.55; color:#c9d1d9; }
+button { margin-top:14px; padding:9px 16px; border:0; border-radius:7px; background:#21262d; color:#e6edf3;
+  font:inherit; font-size:13px; cursor:pointer; border:1px solid #30363d; }
+button:hover { background:#30363d; }
+a { color:#58a6ff; }
+</style>
+</head>
+<body>
+<h1>WebGPU 自检</h1>
+<p class=sub>逐项检查你的浏览器支持这个场景需要的每一项能力。全部为「通过」即可正常游玩。</p>
+
+<div id=out></div>
+
+<h2>原始报告</h2>
+<pre id=raw>正在检测…</pre>
+<button id=copy>复制报告</button>
+<p class=sub style="margin-top:16px">把这个页面的结果截图发给我即可。也可以直接复制上面那段文本。</p>
+
+<script>
+const out = document.getElementById('out'), raw = document.getElementById('raw');
+const rows = [], log = [];
+const line = (k, v, cls) => rows.push(`<div class="h"><div class="k">${k}</div><div class="v">${v} ${cls ? `<span class="b ${cls}">${cls === 'ok' ? '通过' : cls === 'no' ? '不支持' : '注意'}</span>` : ''}</div></div>`);
+const say = (s) => log.push(s);
+const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+
+async function run() {
+  // ---- browser identity
+  const ua = navigator.userAgent;
+  const m = ua.match(/Version\/([\d.]+).*Safari/) || ua.match(/Safari\/([\d.]+)/);
+  const mm = ua.match(/Mac OS X (\d+[_.]\d+)/);
+  line('浏览器 UA', esc(ua));
+  line('Safari 版本', m ? esc(m[1]) : '—');
+  line('macOS 版本', mm ? esc(mm[1].replace('_', '.')) + '（推测）' : '—');
+  line('安全上下文', String(window.isSecureContext), window.isSecureContext ? 'ok' : 'no');
+  if (!window.isSecureContext) say('不是安全上下文：WebGPU 只在 https:// 或 http://localhost 下可用');
+
+  // ---- navigator.gpu
+  line('navigator.gpu', navigator.gpu ? '存在' : '不存在', navigator.gpu ? 'ok' : 'no');
+  if (!navigator.gpu) {
+    line('结论', '这个浏览器没有提供 WebGPU —— 场景无法运行', 'no');
+    say('navigator.gpu 不存在');
+    if (/Safari/.test(ua) && !/Chrom/.test(ua)) say('Safari：WebGPU 自 macOS 15 / Safari 18 起提供；请在「关于本机」确认系统版本');
+    finish();
+    return;
+  }
+
+  // ---- adapter
+  let adapter = null;
+  try {
+    adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) adapter = await navigator.gpu.requestAdapter();
+  } catch (e) { say('requestAdapter 抛错: ' + e.message); }
+  line('WebGPU 适配器', adapter ? '获取成功' : '获取失败（返回 null）', adapter ? 'ok' : 'no');
+  if (!adapter) {
+    line('结论', '浏览器支持 WebGPU，但没有拿到图形适配器', 'no');
+    say('requestAdapter 返回 null');
+    finish();
+    return;
+  }
+  const info = adapter.info || {};
+  line('适配器信息', esc([info.vendor, info.architecture, info.device, info.description].filter(Boolean).join(' / ') || '未提供'));
+  line('软件回退', adapter.isFallbackAdapter ? '是（没有硬件加速）' : '否', adapter.isFallbackAdapter ? 'wa' : 'ok');
+
+  // ---- features
+  const feats = [...adapter.features];
+  line('可用特性', esc(feats.length ? feats.join(', ') : '（无）'));
+  const hasTS = feats.includes('timestamp-query');
+  line('timestamp-query', hasTS ? '支持' : '不支持', hasTS ? 'ok' : 'wa');
+  say('adapter.features: ' + (feats.join(', ') || '(none)'));
+
+  // ---- device
+  let device = null;
+  try {
+    device = await adapter.requestDevice({ requiredFeatures: hasTS ? ['timestamp-query'] : [] });
+  } catch (e) { say('requestDevice 抛错: ' + e.message); }
+  line('GPU 设备', device ? '创建成功' : '创建失败', device ? 'ok' : 'no');
+  if (!device) { line('结论', '拿不到 GPU 设备', 'no'); finish(); return; }
+
+  const T = async (name, fn) => {
+    try { const r = await fn(); line(name, r ? '通过' : '返回失败', r ? 'ok' : 'no'); say(name + ': ' + (r ? 'ok' : 'FAIL')); return r; }
+    catch (e) { line(name, '抛出异常：' + esc(e.message), 'no'); say(name + ': THREW ' + e.message); return false; }
+  };
+
+  // ---- the exact capabilities the scenes need
+  await T('3D 纹理（体积噪声 rg8unorm）', () => {
+    const t = device.createTexture({ size: [16, 16, 8], dimension: '3d', format: 'rg8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    t.destroy(); return true;
+  });
+  await T('rgba16float 渲染目标 + 加法混合', () => {
+    const t = device.createTexture({ size: [64, 64], format: 'rgba16float',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    const p = device.createRenderPipeline({ layout: 'auto',
+      vertex: { module: device.createShaderModule({ code: `
+        @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+          var q = array<vec2f,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+          return vec4f(q[i], 0., 1.);
+        }` }), entryPoint: 'vs' },
+      fragment: { module: device.createShaderModule({ code: `
+        @fragment fn fs() -> @location(0) vec4f { return vec4f(1., 0.7, 0.3, 0.); }` }), entryPoint: 'fs',
+        targets: [{ format: 'rgba16float', blend: {
+          color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } } }] },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' } });
+    const e = device.createCommandEncoder();
+    const r = e.beginRenderPass({ colorAttachments: [{ view: t.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }],
+      depthStencilAttachment: { view: device.createTexture({ size: [64, 64], format: 'depth32float', usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+    r.setPipeline(p); r.draw(3); r.end();
+    device.queue.submit([e.finish()]);
+    return true;
+  });
+  await T('4x MSAA + 解析到 rgba16float', () => {
+    const ms = device.createTexture({ size: [64, 64], format: 'rgba16float', sampleCount: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+    const rs = device.createTexture({ size: [64, 64], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    const e = device.createCommandEncoder();
+    const r = e.beginRenderPass({ colorAttachments: [{ view: ms.createView(), resolveTarget: rs.createView(), loadOp: 'clear', storeOp: 'discard', clearValue: [0, 0, 0, 1] }] });
+    r.end();
+    device.queue.submit([e.finish()]);
+    ms.destroy(); rs.destroy(); return true;
+  });
+  await T('实例化顶点缓冲（stepMode: instance）', () => {
+    const b = device.createBuffer({ size: 32 * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    const p = device.createRenderPipeline({ layout: 'auto',
+      vertex: { module: device.createShaderModule({ code: `
+        struct V { @location(0) a: vec4f, @location(1) b: vec4f };
+        @vertex fn vs(@builtin(vertex_index) i: u32, v: V) -> @builtin(position) vec4f {
+          return vec4f(v.a.xy, 0., 1.);
+        }` }), entryPoint: 'vs', buffers: [{ arrayStride: 32, stepMode: 'instance',
+        attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }] }] },
+      fragment: { module: device.createShaderModule({ code: `
+        @fragment fn fs() -> @location(0) vec4f { return vec4f(1.); }` }), entryPoint: 'fs', targets: [{ format: 'rgba16float' }] } });
+    const e = device.createCommandEncoder();
+    const r = e.beginRenderPass({ colorAttachments: [{ view: device.createTexture({ size: [64, 64], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+    r.setPipeline(p); r.setVertexBuffer(0, b); r.draw(4, 2); r.end();
+    device.queue.submit([e.finish()]);
+    b.destroy(); return true;
+  });
+  await T('计算着色器 dispatch（地形烘焙）', () => {
+    const m = device.createShaderModule({ code: `
+      @group(0) @binding(0) var<storage, read_write> d: array<f32>;
+      @compute @workgroup_size(64) fn cs(@builtin(global_invocation_id) g: vec3u) { d[g.x] = f32(g.x); }` });
+    const p = device.createComputePipeline({ layout: 'auto', compute: { module: m, entryPoint: 'cs' } });
+    const b = device.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE });
+    const bg = device.createBindGroup({ layout: p.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: b } }] });
+    const e = device.createCommandEncoder();
+    const c = e.beginComputePass(); c.setPipeline(p); c.setBindGroup(0, bg); c.dispatchWorkgroups(1); c.end();
+    device.queue.submit([e.finish()]);
+    b.destroy(); return true;
+  });
+  await T('缓冲 mapAsync 回读（地形距离场）', () => {
+    const src = device.createBuffer({ size: 256, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
+    const dst = device.createBuffer({ size: 256, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const e = device.createCommandEncoder();
+    e.copyBufferToBuffer(src, 0, dst, 0, 256);
+    device.queue.submit([e.finish()]);
+    return dst.mapAsync(GPUMapMode.READ).then(() => { const v = new Float32Array(dst.getMappedRange())[0]; dst.unmap(); return v === 0; });
+  });
+
+  // ---- preferred canvas format
+  try { line('画布首选格式', esc(navigator.gpu.getPreferredCanvasFormat())); }
+  catch (e) { line('画布首选格式', '读取失败：' + esc(e.message), 'wa'); }
+
+  // ---- a real end-to-end draw into the canvas
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = 320; cv.height = 200;
+    document.body.appendChild(cv);
+    const ctx = cv.getContext('webgpu');
+    const fmt = navigator.gpu.getPreferredCanvasFormat();
+    ctx.configure({ device, format: fmt, alphaMode: 'opaque' });
+    const m = device.createShaderModule({ code: `
+      @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+        var q = array<vec2f,3>(vec2f(-1.,-3.), vec2f(3.,1.), vec2f(-1.,1.));
+        return vec4f(q[i], 0., 1.);
+      }
+      @fragment fn fs(@builtin(position) c: vec4f) -> @location(0) vec4f {
+        return vec4f(c.x / 320., c.y / 200., 0.6, 1.);
+      }` });
+    const p = device.createRenderPipeline({ layout: 'auto',
+      vertex: { module: m, entryPoint: 'vs' },
+      fragment: { module: m, entryPoint: 'fs', targets: [{ format: fmt }] } });
+    const e = device.createCommandEncoder();
+    const r = e.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+    r.setPipeline(p); r.draw(3); r.end();
+    device.queue.submit([e.finish()]);
+    await device.queue.onSubmittedWorkDone();
+    line('画布实际绘制', '成功（下面这张渐变图就是 WebGPU 画出来的）', 'ok');
+    cv.style.cssText = 'display:block;margin-top:14px;border-radius:8px;border:1px solid #30363d;max-width:100%';
+  } catch (e) {
+    line('画布实际绘制', '失败：' + esc(e.message), 'no');
+    say('canvas draw THREW ' + e.message);
+  }
+
+  finish();
+}
+
+function finish() {
+  out.innerHTML = rows.join('');
+  raw.textContent = log.join('\n');
+  const bad = rows.filter((r) => r.includes('b no')).length;
+  const line2 = document.createElement('div');
+  line2.className = 'h';
+  line2.innerHTML = `<div class="k">结论</div><div class="v">${bad ? '有 ' + bad + ' 项不支持 —— 场景在这台设备上跑不起来' : '全部通过 —— 这个浏览器可以正常运行场景'}${bad ? '' : ''}<span class="b ${bad ? 'no' : 'ok'}">${bad ? '不可运行' : '可运行'}</span></div>`;
+  out.appendChild(line2);
+}
+
+document.getElementById('copy').onclick = async () => {
+  const txt = '=== WebGPU 自检 ===\n' + log.join('\n') + '\n\n' + rows.map((r) => r.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).join('\n');
+  try { await navigator.clipboard.writeText(txt); document.getElementById('copy').textContent = '已复制'; }
+  catch (e) { document.getElementById('copy').textContent = '复制失败，请手动选中'; }
+};
+
+run().catch((e) => { raw.textContent = '检测过程出错：' + e.message + '\n' + e.stack; out.innerHTML = ''; });
+</script>
+</body>
+</html>

@@ -16,10 +16,17 @@ const say = (m, to, ms) => {
   return new Promise((r) => { a.ready.then(() => setTimeout(r)); setTimeout(r, document.hidden ? 0 : 1e3); });
 };
 const fail = (m) => { throw new Error(m, { cause: 1 }); }; // cause marks a message that is shown as it is
-if (!navigator.gpu) fail('This scene needs WebGPU. Try a current Chrome or Edge.');
+// Safari only ships WebGPU from macOS 15 / Safari 18. The engine used to show every Safari
+// user a "use Chrome" line, which read as "this will not run here" — so name the real cause.
+const IS_SAFARI = /Safari/.test(navigator.userAgent) && !/Chrom(e|ium)|Edg/.test(navigator.userAgent);
+if (!navigator.gpu) fail(IS_SAFARI
+  ? 'This scene needs WebGPU. Safari has it from macOS 15 (Safari 18) — check "About This Mac". Chrome or Edge run it too.'
+  : 'This scene needs WebGPU. Try a current Chrome or Edge.');
 const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-if (!adapter) fail('No WebGPU adapter found.');
-$('w').hidden = !!navigator.userAgentData; // only Chromium-based browsers have it
+if (!adapter) fail(IS_SAFARI
+  ? 'No WebGPU adapter found. Safari needs macOS 15 or later; Chrome or Edge work here too.'
+  : 'No WebGPU adapter found.');
+$('w').hidden = !IS_SAFARI; // now that WebGPU works this is a tip, not a blocker
 const hasTS = adapter.features.has('timestamp-query');
 const device = await adapter.requestDevice({ requiredFeatures: hasTS ? ['timestamp-query'] : [] });
 device.addEventListener('uncapturederror', (e) => console.error('GPU: ' + e.error.message));
