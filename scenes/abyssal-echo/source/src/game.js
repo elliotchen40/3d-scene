@@ -255,7 +255,7 @@ const gPing = () => {
   for (let i = 0; i < gS.np; i++) {
     if (gS.tk[i]) continue;
     const d = Math.hypot(gS.px[i * 3] - F[CX], gS.px[i * 3 + 1] - F[CY], gS.px[i * 3 + 2] - F[CZ]);
-    if (d < 45) { gS.fl[i] = 1; gS.kn[i] = 1; found++; }
+    if (d < 60) { gS.fl[i] = 1; gS.kn[i] = 1; found++; }
     if (d < nd) { nd = d; near = i; }
   }
   if (near >= 0) { gS.kn[near] = 1; gS.fl[near] = 1; }
@@ -306,11 +306,15 @@ const gTick = () => {
     const o = i * 8;
     gS.fl[i] = max(0, gS.fl[i] - dt * .5);
     gS.pb[o] = gS.px[i * 3]; gS.pb[o + 1] = gS.px[i * 3 + 1]; gS.pb[o + 2] = gS.px[i * 3 + 2];
-    gS.pb[o + 3] = .5;
+    // a located core is a beacon: wide and bright enough to read through the
+    // murk, and it flares up again when the diver is right on top of it
+    const known = gS.kn[i] && !gS.tk[i];
+    const near = known ? Math.hypot(gS.px[i * 3] - F[CX], gS.px[i * 3 + 1] - F[CY], gS.px[i * 3 + 2] - F[CZ]) : 1e9;
+    gS.pb[o + 3] = known ? 1 : .42;
     gS.pb[o + 4] = 1; gS.pb[o + 5] = .74; gS.pb[o + 6] = .34;
     // unknown cores keep a glimmer so the murk has something to hide, but only
     // a ping turns them into a real light
-    gS.pb[o + 7] = gS.tk[i] ? 0 : gS.kn[i] ? .3 + gS.fl[i] * .9 : .045;
+    gS.pb[o + 7] = gS.tk[i] ? 0 : known ? (1.15 + gS.fl[i] * 1.5) * (near < 14 ? 1.7 : 1) : .1;
   }
   Q.writeBuffer(gBufPick, 0, gS.pb);
 
@@ -338,9 +342,11 @@ const gTick = () => {
     else {
       const dx = gS.px[bi * 3] - F[CX], dz = gS.px[bi * 3 + 2] - F[CZ];
       const rel = Math.atan2(dx, -dz) - F[YAW];
+      const dy = gS.px[bi * 3 + 1] - F[CY];
+      const vert = dy < -2 ? '↓ 再下潜 ' + Math.round(-dy) + ' 米' : dy > 2 ? '↑ 上浮 ' + Math.round(dy) + ' 米' : '就在这一层';
       gEl.bear.style.display = 'flex';
       gEl.arrow.style.transform = 'rotate(' + (rel * 180 / PI) + 'deg)';
-      gEl.dist.textContent = Math.round(bd) + ' 米 · 深 ' + Math.round(-gS.px[bi * 3 + 1]);
+      gEl.dist.textContent = (bd < 14 ? '就在附近！' : Math.round(bd) + ' 米 · ') + vert;
     }
   }
   if (gS.msgT > 0) { gS.msgT -= dt; if (gS.msgT <= 0) gEl.msg.style.opacity = 0; }
@@ -417,6 +423,6 @@ if (!mob) gEl.ping.style.display = 'none';
 
 if (location.search.includes('debug')) {
   globalThis.__gS = gS; globalThis.__aeLook = lookAt; globalThis.__aeOpen = gOpen;
-  globalThis.__aePick = { pipe: gPPick, buf: gBufPick, bg: bg0, ubo };
+  globalThis.__aePick = { pipe: gPPick, buf: gBufPick, bg: bg0, ubo, dev: device };
   globalThis.__aeRock = gRock; globalThis.__aeFloor = gFloor; globalThis.__aeAnch = gAnch;
 }
